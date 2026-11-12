@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a10">
+<title>XAU – analisi</title>
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="XAU">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-tab="oggi">
+<div class="glow"></div>
+<header class="top">
+  <div class="avatar" title="Oro">Au</div>
+  <label class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="symbol" value="XAUUSD" placeholder="Cerca strumento" spellcheck="false" autocomplete="off">
+  </label>
+  <button id="refresh" class="round" title="Aggiorna ora"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
+</header>
+
+<main>
+  <section class="hero" id="hero">
+    <div class="hero-label" id="hName">Oro (XAUUSD)</div>
+    <div class="hero-price" id="hPrice">–</div>
+    <div class="hero-sub"><span id="hChange" class="delta">–</span><span id="hUpd" class="muted"></span></div>
+    <label class="spot"><span>Prezzo su MT5</span><input id="spot" inputmode="decimal" placeholder="es. 3867" autocomplete="off"></label>
+    <div class="actions">
+      <button class="act" data-open="grafico"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></span>Grafico</button>
+      <button class="act" data-open="tm"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span>Time Machine</button>
+      <button class="act" data-open="avvisi"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg></span>Avvisi</button>
+      <button class="act" id="moreBtn"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></svg></span>Altro</button>
+    </div>
+    <div class="hero-read" id="hRead">Carico i dati…</div>
+  </section>
+
+  <section class="controls">
+    <div class="ctl"><span class="ctl-label">Time frame</span><div class="seg" id="tfSeg"></div></div>
+    <div class="ctl"><span class="ctl-label">Setup</span><div class="seg" id="setupSeg"></div></div>
+    <div class="ctl"><span class="ctl-label">Target</span><div class="seg" id="rrSeg"></div></div>
+    <details class="ctl-more" id="moreBox"><summary>Altre impostazioni</summary>
+      <div class="params">
+        <label>Barre del breakout<input id="pN" type="number" value="20" min="5" max="100"></label>
+        <label>Stop in ATR<input id="pAm" type="number" value="1" step="0.25" min="0.25"></label>
+        <label>Durata (barre)<input id="pHold" type="number" placeholder="auto" min="2"></label>
+        <label>Range apertura (min)<input id="pOr" type="number" value="15" step="5" min="5"></label>
+        <label>Simulazioni<input id="pRep" type="number" value="10000" step="1000" min="1000" max="20000"></label>
+      </div>
+    </details>
+  </section>
+
+  <div id="msg" class="notice" hidden></div>
+
+  <!-- OGGI -->
+  <section class="tab on" id="tab-oggi">
+    <div class="grid2">
+      <div class="card" id="dirBuy"></div>
+      <div class="card" id="dirSell"></div>
+    </div>
+    <div class="card"><h3>Cosa dice l'analisi</h3><div id="explain" class="explain muted">–</div></div>
+    <div class="card"><h3>Tutti i time frame</h3><div id="mtfBox" class="rows"></div><p class="muted small" id="mtfRead"></p></div>
+    <div class="card" id="claudeCard"><h3>Chiedi a Claude</h3>
+      <div id="claudeOff" class="muted small" hidden>La chat con Claude è spenta: serve una chiave API. Imposta la variabile <code>ANTHROPIC_API_KEY</code> e riavvia l'app. L'analisi qui sopra funziona senza.</div>
+      <div id="claudeOn" hidden>
+        <div class="askrow"><input id="askQ" placeholder="Es. Perché il buy è sfavorevole?"><button id="askBtn" class="btn primary">Chiedi</button></div>
+        <div id="askA" class="explain"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GRAFICO -->
+  <section class="tab" id="tab-grafico">
+    <div class="card">
+      <div class="row between"><h3 id="chartTitle">Grafico</h3><div class="seg small" id="dirSeg1"></div></div>
+      <canvas id="cvCandles" class="cv tall"></canvas>
+      <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta.</p>
+    </div>
+  </section>
+
+  <!-- TIME MACHINE -->
+  <section class="tab" id="tab-tm">
+    <div class="card">
+      <div class="row between"><h3>Time Machine</h3><div class="seg small" id="dirSeg2"></div></div>
+      <div id="tmStats" class="statrow"></div>
+      <h4>Le 10.000 ripetizioni da adesso</h4>
+      <canvas id="cvFan" class="cv"></canvas>
+      <p class="muted small" id="tmFanNote"></p>
+    </div>
+    <div class="card">
+      <h4>Tutte le casistiche passate della stessa regola</h4>
+      <div id="casesStats" class="statrow"></div>
+      <canvas id="cvCases" class="cv"></canvas>
+      <div id="caseGrid" class="casegrid"></div>
+      <p class="muted small" id="caseNote">Ogni linea è un'operazione passata, in R (1R = il rischio). Verde = è arrivata al target, rosso = allo stop, grigio = né l'uno né l'altro. Tocca un quadratino per evidenziarla.</p>
+    </div>
+  </section>
+
+  <!-- AVVISI -->
+  <section class="tab" id="tab-avvisi">
+    <div class="card">
+      <h3>Avvisi</h3>
+      <p class="muted small">Quando c'è un segnale nuovo, l'app suona e ti manda una notifica del browser. Funziona solo finché questa pagina resta aperta. Nessun ordine viene mai inviato: decidi e operi tu.</p>
+      <div class="alertgrid">
+        <div><div class="ctl-label">Time frame da controllare</div><div id="alTf" class="chips"></div></div>
+        <div><div class="ctl-label">Tipo di segnale</div><div id="alSetup" class="chips"></div></div>
+        <div><div class="ctl-label">Quando avvisarmi</div><div class="chips"><label class="chip"><input type="radio" name="alStance" value="fav" checked><span>Solo segnali favorevoli</span></label><label class="chip"><input type="radio" name="alStance" value="all"><span>Anche senza vantaggio dimostrato</span></label></div></div>
+      </div>
+      <div class="row gap"><button id="alToggle" class="btn primary">Attiva avvisi</button><button id="alTest" class="btn">Prova suono</button><span id="alStatus" class="muted small"></span></div>
+      <div id="alList" class="siglist"></div>
+    </div>
+    <div class="card">
+      <h3>Report dei segnali</h3>
+      <div id="jStats" class="statrow"></div>
+      <canvas id="cvEq" class="cv short"></canvas>
+      <div id="jStance" class="statrow"></div>
+      <div id="jTable" class="tablewrap"></div>
+      <p class="muted small">Ogni segnale che l'app ti ha mostrato viene salvato e poi seguito fino a target, stop o fine finestra. R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop).</p>
+    </div>
+  </section>
+
+  <footer class="foot muted small">Solo analisi: nessun broker, nessun ordine. Dati gratuiti e non ufficiali di Yahoo (per l'oro il future GC=F, non lo spot). Non è consulenza finanziaria.</footer>
+</main>
+
+<nav class="bottom" id="tabs">
+  <button data-tab="oggi" class="on"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>Oggi</button>
+  <button data-tab="grafico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>Grafico</button>
+  <button data-tab="tm"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>Time Machine</button>
+  <button data-tab="avvisi"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>Avvisi</button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>
