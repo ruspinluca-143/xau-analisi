@@ -152,3 +152,6 @@ canvas.cv:active{cursor:grabbing}
 .pager::-webkit-scrollbar{display:none}
 .pager .tab{display:block;flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always}
 [hidden]{display:none !important}
+
+canvas.cv.small{height:140px}
+.row.between{flex-wrap:wrap;gap:8px}

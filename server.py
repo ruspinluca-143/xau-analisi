@@ -26,7 +26,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "web") if os.path.isdir(os.path.join(ROOT, "web")) else ROOT  # versione online piatta: tutto nella stessa cartella
 DATA = os.path.join(ROOT, "data")
 JOURNAL = os.path.join(DATA, "journal.json")
-DEFAULT_HOLD = {"1m": 60, "5m": 36, "15m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
+DEFAULT_HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
 jlock = threading.Lock()
 SETUP_CACHE = {}
 
@@ -205,7 +205,7 @@ def api_setup(q):
 def api_signals(q):
     sym = q.get("symbol", ["XAUUSD"])[0]
     ys = E.yahoo_symbol(sym)
-    tfs = [t for t in q.get("tfs", ["5m,15m,1h"])[0].split(",") if t in E.TF][:4]
+    tfs = [t for t in q.get("tfs", ["5m,15m,1h"])[0].split(",") if t in E.TF][:8]
     setups = [s for s in q.get("setups", ["breakout"])[0].split(",") if s][:3]
     rr = bounded(q, "rr", 2.0, 0.25, 20.0)
     now_u = E.now_utc()

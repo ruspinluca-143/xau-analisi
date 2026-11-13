@@ -78,7 +78,7 @@
   <!-- GRAFICO -->
   <section class="tab" id="tab-grafico">
     <div class="card">
-      <div class="row between"><h3 id="chartTitle">Grafico</h3><div class="seg small" id="dirSeg1"></div></div>
+      <div class="row between"><h3 id="chartTitle">Grafico</h3><div class="row gap"><div class="seg small" id="axisSeg1"></div><div class="seg small" id="dirSeg1"></div></div></div>
       <canvas id="cvCandles" class="cv tall"></canvas>
       <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta. Zoom: rotellina del mouse o pizzico con due dita; trascina per spostarti; doppio tocco o ⟲ per ripristinare; + e − per ingrandire o rimpicciolire.</p>
     </div>
@@ -87,18 +87,19 @@
   <!-- TIME MACHINE -->
   <section class="tab" id="tab-tm">
     <div class="card">
-      <div class="row between"><h3>Time Machine</h3><div class="seg small" id="dirSeg2"></div></div>
+      <div class="row between"><h3>Time Machine</h3><div class="row gap"><div class="seg small" id="axisSeg2"></div><div class="seg small" id="dirSeg2"></div></div></div>
       <div id="tmStats" class="statrow"></div>
       <h4>Le 10.000 ripetizioni da adesso</h4>
-      <canvas id="cvFan" class="cv"></canvas>
-      <p class="muted small" id="tmFanNote"></p>
+      <canvas id="cvFan" class="cv small"></canvas>
+      <div class="explain small" id="tmFanNote"></div>
     </div>
     <div class="card">
       <h4>Tutte le casistiche passate della stessa regola</h4>
       <div id="casesStats" class="statrow"></div>
-      <canvas id="cvCases" class="cv"></canvas>
+      <canvas id="cvCases" class="cv small"></canvas>
       <div id="caseGrid" class="casegrid"></div>
-      <p class="muted small" id="caseNote">Ogni linea è un'operazione passata, in R (1R = il rischio). Verde = è arrivata al target, rosso = allo stop, grigio = né l'uno né l'altro. Tocca un quadratino per evidenziarla. Anche questo grafico si può ingrandire e spostare.</p>
+      <div class="explain small" id="caseDesc"></div>
+      <p class="muted small" id="caseNote">Tocca un quadratino per evidenziare una operazione. Anche questo grafico si può ingrandire e spostare.</p>
     </div>
   </section>
 
@@ -113,6 +114,7 @@
         <div><div class="ctl-label">Quando avvisarmi</div><div class="chips"><label class="chip"><input type="radio" name="alStance" value="fav" checked><span>Solo segnali favorevoli</span></label><label class="chip"><input type="radio" name="alStance" value="all"><span>Anche senza vantaggio dimostrato</span></label></div></div>
       </div>
       <div class="row gap"><button id="alToggle" class="btn primary">Attiva avvisi</button><button id="alTest" class="btn">Prova suono</button><span id="alStatus" class="muted small"></span></div>
+      <p class="muted small" id="alDiag">Apri questa schermata o attiva gli avvisi per controllare adesso.</p>
       <div id="alList" class="siglist"></div>
     </div>
     <div class="card" id="autoCard">

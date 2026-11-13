@@ -30,13 +30,14 @@ TF = {
     "1m": ("1m", "7d", 60),
     "5m": ("5m", "60d", 300),
     "15m": ("15m", "60d", 900),
+    "30m": ("30m", "60d", 1800),
     "1h": ("1h", "730d", 3600),
     "4h": ("1h", "730d", 14400),  # ricostruito dalle barre da 1 ora
     "1d": ("1d", "2y", 86400),
     "1w": ("1wk", "5y", 604800),
 }
-TF_ORDER = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
-SHORT_TF = ("1m", "5m", "15m", "1h")
+TF_ORDER = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
+SHORT_TF = ("1m", "5m", "15m", "30m", "1h")
 LONG_TF = ("4h", "1d", "1w")
 O, H, L, C = 1, 2, 3, 4  # indici nelle barre (ts, o, h, l, c)
 
@@ -163,7 +164,7 @@ def get_bars(ysym, tf, now_ts):
             if len(g) >= 2 and (k + 1) * 14400 <= now_ts:
                 out.append((k * 14400, g[0][O], max(x[H] for x in g), min(x[L] for x in g), g[-1][C]))
         return out, res["meta"]
-    if tf in ("1m", "5m", "15m"):
+    if tf in ("1m", "5m", "15m", "30m"):
         return [b for b in raw if b[0] % sec == 0 and b[0] + sec <= now_ts], res["meta"]
     if tf == "1h":
         return [b for b in raw if b[0] + 3600 <= now_ts], res["meta"]

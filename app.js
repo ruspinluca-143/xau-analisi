@@ -1,7 +1,7 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const TFS = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"];
+const TFS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"];
 const RRS = [1, 1.5, 2, 3, 4, 5];
 const S = { symbol: "XAUUSD", spot: "", tf: "1h", setup: "breakout", rr: 2, dir: "buy", ov: null, data: null, gold: true, seq: 0, selCase: null, tab: "oggi" };
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -94,6 +94,10 @@ function buildSetupSeg() {
   seg($("#setupSeg"), items, S.setup, (v) => { S.setup = v; if (v !== "breakout" && !["5m", "15m"].includes(S.tf)) { S.tf = "5m"; buildTf(); } buildSetupSeg(); load(); });
 }
 function buildRr() { seg($("#rrSeg"), RRS.map((r) => ({ label: r + "R", value: r })), S.rr, (v) => { S.rr = v; buildRr(); load(true); }); }
+function buildAxisSegs() {
+  seg($("#axisSeg1"), [{ label: "Prezzo", value: "p" }, { label: "R", value: "r" }], S.axisChart, (v) => { S.axisChart = v; buildAxisSegs(); renderChart(); });
+  seg($("#axisSeg2"), [{ label: "R", value: "r" }, { label: "Prezzo", value: "p" }], S.axisTm, (v) => { S.axisTm = v; buildAxisSegs(); renderTm(); });
+}
 function buildDirSegs() {
   ["#dirSeg1", "#dirSeg2"].forEach((id) => seg($(id), [{ label: "BUY", value: "buy" }, { label: "SHORT", value: "sell" }], S.dir, (v) => { S.dir = v; buildDirSegs(); renderChart(); renderTm(); }));
 }
@@ -105,7 +109,7 @@ function setActive(name) {
   if (S.tab === name) return;
   S.tab = name; document.body.dataset.tab = name;
   $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
-  if (name === "avvisi") { loadJournal(); loadAuto(); }
+  if (name === "avvisi") { loadJournal(); loadAuto(); pollSignals(true); }
   renderChart(); renderTm();
 }
 function goTab(name, instant) {
@@ -187,7 +191,7 @@ function renderExplain() {
   $("#explain").innerHTML = lines.map((l) => `<p>${l.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>`).join("");
 }
 function renderMtf() {
-  const m = S.ov.mtf, names = { "1m": "1 minuto", "5m": "5 minuti", "15m": "15 minuti", "1h": "1 ora", "4h": "4 ore", "1d": "Giornaliero", "1w": "Settimanale" };
+  const m = S.ov.mtf, names = { "1m": "1 minuto", "5m": "5 minuti", "15m": "15 minuti", "30m": "30 minuti", "1h": "1 ora", "4h": "4 ore", "1d": "Giornaliero", "1w": "Settimanale" };
   let h = "";
   TFS.forEach((t) => {
     const x = m[t];
@@ -215,6 +219,7 @@ function niceTicks(lo, hi, n) {
   const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v); return out;
 }
 /* ---------- zoom e spostamento dei grafici ---------- */
+S.axisChart = "p"; S.axisTm = "p"; // asse destro: p = prezzo, r = rendimento in R
 S.zdom = {}; // per ogni grafico: dominio dei dati e margini (aggiornato a ogni disegno)
 const TA = {}; // funzioni che aggiornano il touch-action di ogni grafico
 const ZOOM = {}; // per ogni grafico: { span: ampiezza visibile, right: quanto resta nascosto a destra }
@@ -279,11 +284,12 @@ function renderChart() {
   const r = S.data.result && S.data.result.dirs ? S.data.result.dirs[S.dir] : null, b = r && r.blocks ? r.blocks[key(S.rr)] : null;
   const levels = [];
   if (r && r.entry != null) {
-    levels.push({ y: r.entry, label: r.state === "waiting" ? "Scatta" : "Ingresso", col: css("--accent") });
-    levels.push({ y: r.stop, label: "Stop", col: css("--red") });
-    if (b && b.target != null) levels.push({ y: b.target, label: "Target " + S.rr + "R", col: css("--green") });
+    levels.push({ y: r.entry, label: r.state === "waiting" ? "Scatta" : "Ingresso", col: css("--accent"), rl: "0R" });
+    levels.push({ y: r.stop, label: "Stop", col: css("--red"), rl: "-1R" });
+    if (b && b.target != null) levels.push({ y: b.target, label: "Target " + S.rr + "R", col: css("--green"), rl: "+" + S.rr + "R" });
   }
   const ml = 8, mr = 70, mt = 10, mb = 22, o = off(), pw = w - ml - mr;
+  const axR = S.axisChart === "r" && r && r.entry != null && r.risk, sg = S.dir === "buy" ? 1 : -1;
   S.zdom.candles = { dmin: 0, dmax: n, defSpan: Math.min(120, n), ml, mr };
   const V = zView("candles", 0, n, Math.min(120, n));
   const i0 = Math.max(0, Math.floor(V.lo)), i1 = Math.min(n - 1, Math.ceil(V.hi));
@@ -293,7 +299,10 @@ function renderChart() {
   const pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
   const X = (i) => ml + (i + 0.5 - V.lo) / V.span * pw, Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1; c.textAlign = "left";
-  niceTicks(lo + o, hi + o, 5).forEach((t) => { const y = Y(t - o); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.fillText(fmt(t), w - mr + 6, y + 4); });
+  if (axR) {
+    const a1 = (lo - r.entry) * sg / r.risk, a2 = (hi - r.entry) * sg / r.risk;
+    niceTicks(Math.min(a1, a2), Math.max(a1, a2), 5).forEach((t) => { const y = Y(r.entry + sg * t * r.risk); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.fillText((t > 0 ? "+" : "") + (t % 1 ? t.toFixed(1) : t.toFixed(0)) + "R", w - mr + 6, y + 4); });
+  } else niceTicks(lo + o, hi + o, 5).forEach((t) => { const y = Y(t - o); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.fillText(fmt(t), w - mr + 6, y + 4); });
   const bw = Math.max(1, pw / V.span * 0.62);
   c.save(); c.beginPath(); c.rect(ml, 0, pw, h); c.clip();
   for (let i = i0; i <= i1; i++) {
@@ -310,7 +319,7 @@ function renderChart() {
   levels.forEach((l) => { c.strokeStyle = l.col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, Y(l.y)); c.lineTo(w - mr, Y(l.y)); c.stroke(); c.setLineDash([]); });
   c.restore();
   c.textAlign = "left";
-  levels.forEach((l) => { c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(l.label, w - mr + 4, Y(l.y) + 3.5); });
+  levels.forEach((l) => { c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(axR ? l.rl : l.label, w - mr + 4, Y(l.y) + 3.5); });
   c.font = "11px sans-serif"; c.fillStyle = css("--muted"); c.textAlign = "center";
   const every = Math.max(1, Math.ceil(V.span / Math.max(2, Math.floor(pw / (ch.sec >= 3600 ? 105 : 70)))));
   for (let i = Math.ceil(V.lo); i < Math.min(n, Math.floor(V.hi)); i++) {
@@ -319,47 +328,59 @@ function renderChart() {
   }
 }
 
-function drawAxesR(c, w, h, lo, ymin, ymax, ml, mr, mt, mb, rr, hi) {
+function drawAxesR(c, w, h, lo, ymin, ymax, ml, mr, mt, mb, rr, hi, lab, flip, hint) {
+  const tr = (v) => (flip ? -v : v); // in "Prezzo" lo short si legge al contrario: guadagno = prezzo che scende
   const Y = (v) => mt + (ymax - v) / (ymax - ymin) * (h - mt - mb), Xs = (i) => ml + (i - lo) / Math.max(1e-9, hi - lo) * (w - ml - mr);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1; c.textAlign = "left"; c.font = "11px sans-serif";
-  niceTicks(ymin, ymax, 5).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(t.toFixed(t % 1 ? 1 : 0) + "R", w - mr + 6, Y(t) + 4); });
-  [[rr, css("--green"), "Target"], [-1, css("--red"), "Stop"], [0, css("--muted"), "Ingresso"]].forEach(([v, col, lab]) => {
-    c.strokeStyle = col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, Y(v)); c.lineTo(w - mr, Y(v)); c.stroke(); c.setLineDash([]);
+  niceTicks(ymin, ymax, 5).forEach((t) => {
+    const R = tr(t); c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke();
+    c.fillText(lab ? lab(R) : (R > 0 ? "+" : "") + (R % 1 ? R.toFixed(1) : R.toFixed(0)) + "R", w - mr + 6, Y(t) + 4);
   });
+  [[rr, css("--green")], [-1, css("--red")], [0, css("--muted")]].forEach(([v, col]) => {
+    const y = Y(tr(v));
+    c.strokeStyle = col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.setLineDash([]);
+    if (lab) { c.fillStyle = col; c.fillRect(w - mr + 1, y - 8, mr - 3, 16); c.fillStyle = "#fff"; c.font = "bold 10px sans-serif"; c.fillText(lab(v), w - mr + 4, y + 3.5); c.font = "11px sans-serif"; }
+  });
+  if (hint) { c.fillStyle = css("--muted"); c.font = "10px sans-serif"; c.textAlign = "left"; const hx = ml + (h < 200 ? 118 : 4); c.fillText("▲ prezzo sale", hx, mt + 10); c.fillText("▼ prezzo scende", hx, h - mb - 5); c.font = "11px sans-serif"; }
   return { Y, Xs };
 }
 
+const fmtDur = (min) => (min >= 180 ? (min / 60).toFixed(min % 60 ? 1 : 0).replace(".", ",") + " ore" : Math.round(min) + " minuti");
 function renderTm() {
   if (!S.data) return;
   const res = S.data.result; if (!res || !res.dirs) return;
   const r = res.dirs[S.dir], b = r.blocks[key(S.rr)];
+  const buy = S.dir === "buy", sg = buy ? 1 : -1, flip = S.axisTm === "p" && !buy, tr = (v) => (flip ? -v : v);
   let st = "";
   if (b && b.mc) st += `<div class="stat"><span>Target prima</span><b class="g">${pct(b.mc.target, 1)}</b></div><div class="stat"><span>Stop prima</span><b class="r">${pct(b.mc.stop, 1)}</b></div><div class="stat"><span>Nessuno dei due</span><b>${pct(b.mc.none, 1)}</b></div><div class="stat"><span>R medio</span><b>${sgn(b.mc.avg_r)}</b></div>`;
   else st += `<p class="muted">${b && b.closed ? "Il piano teorico si è già chiuso (" + b.closed + "): niente da simulare." : "Nessun setup attivo o in attesa: la simulazione parte quando c'è un livello da valutare."}</p>`;
   if (b) st += `<div class="stat"><span>Giudizio</span><b style="font-size:15px">${(STANCE[b.stance] || [b.stance])[0]}</b></div>`;
   $("#tmStats").innerHTML = st;
   /* ventaglio */
-  const cvF = $("#cvFan"), kf = setupCanvas(cvF);
+  const cvF = $("#cvFan"), kf = setupCanvas(cvF), note = $("#tmFanNote");
   if (kf) {
     const { c, w, h } = kf, f = r.fan;
-    if (!f) { c.fillStyle = css("--muted"); c.font = "14px sans-serif"; c.fillText("Nessuna simulazione per questa direzione.", 12, 30); $("#tmFanNote").textContent = ""; }
+    if (!f) { c.fillStyle = css("--muted"); c.font = "14px sans-serif"; c.fillText("Nessuna simulazione per questa direzione.", 12, 30); note.innerHTML = ""; }
     else {
-      const ml = 8, mr = 44, mt = 10, mb = 24, n = f.steps, bd = f.bands;
-      const ymin = Math.min(-1.4, ...bd.p5) - 0.1, ymax = Math.max(S.rr + 0.5, ...bd.p95) + 0.1;
+      const labP = (S.axisTm === "p" && r.entry != null && r.risk) ? (R) => fp(r.entry + sg * R * r.risk) : null;
+      const ml = 8, mr = labP ? 66 : 44, mt = 8, mb = 22, n = f.steps, bd = f.bands;
+      const rmin = Math.min(-1.4, ...bd.p5) - 0.1, rmax = Math.max(S.rr + 0.5, ...bd.p95) + 0.1;
+      const ymin = flip ? -rmax : rmin, ymax = flip ? -rmin : rmax;
       S.zdom.fan = { dmin: 0, dmax: n, defSpan: n, ml, mr }; const VF = zView("fan", 0, n, n);
-      const { Y, Xs } = drawAxesR(c, w, h, VF.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VF.hi);
+      const { Y, Xs } = drawAxesR(c, w, h, VF.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VF.hi, labP, flip, S.axisTm === "p");
       c.save(); c.beginPath(); c.rect(ml, 0, w - ml - mr, h); c.clip();
-      c.lineWidth = 1; c.strokeStyle = css("--muted"); c.globalAlpha = 0.18;
-      f.paths.forEach((p) => { c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); });
-      c.globalAlpha = 1;
-      const band = (lo, hi, col, a) => { c.fillStyle = col; c.globalAlpha = a; c.beginPath(); lo.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); for (let i = hi.length - 1; i >= 0; i--) c.lineTo(Xs(i), Y(hi[i])); c.closePath(); c.fill(); c.globalAlpha = 1; };
+      const band = (lo, hi, col, a) => { c.fillStyle = col; c.globalAlpha = a; c.beginPath(); lo.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(tr(v))) : c.moveTo(Xs(i), Y(tr(v))))); for (let i = hi.length - 1; i >= 0; i--) c.lineTo(Xs(i), Y(tr(hi[i]))); c.closePath(); c.fill(); c.globalAlpha = 1; };
       band(bd.p5, bd.p95, css("--accent"), 0.10); band(bd.p25, bd.p75, css("--accent"), 0.18);
-      c.strokeStyle = css("--accent"); c.lineWidth = 2.2; c.beginPath(); bd.p50.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke();
+      c.strokeStyle = css("--accent"); c.lineWidth = 2.2; c.beginPath(); bd.p50.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(tr(v))) : c.moveTo(Xs(i), Y(tr(v))))); c.stroke();
       c.restore();
       c.fillStyle = css("--muted"); c.textAlign = "center"; c.font = "11px sans-serif";
       const sec = res.sec || (S.data.chart && S.data.chart.sec) || 300;
       [VF.lo, (VF.lo + VF.hi) / 2, VF.hi].forEach((i, q) => { i = Math.round(i); const m = Math.round(i * sec / 60); c.fillText(i === 0 ? "ora" : "+" + (m >= 180 ? (m / 60).toFixed(m % 60 ? 1 : 0).replace(".", ",") + " h" : m + " min"), Xs(i) + (q === 2 ? -14 : 0), h - 6); });
-      $("#tmFanNote").textContent = "Linea blu = esito mediano, fascia scura = dal 25% al 75% dei casi, fascia chiara = dal 5% al 95%, linee grigie = 40 ripetizioni di esempio. Dopo lo stop il percorso resta fermo a -1R. Il target è la linea verde a +" + S.rr + "R. Zoom: rotellina o pizzico, trascina per spostare, doppio tocco per ripristinare.";
+      const dur = fmtDur(n * sec / 60), m = b && b.mc, from = r.state === "waiting" ? `dall'ipotesi che il prezzo raggiunga il livello d'ingresso (${fp(r.entry)})` : `da adesso (${fp(r.cur != null ? r.cur : r.entry)})`;
+      note.innerHTML = `<p><b>Cosa stai guardando.</b> Abbiamo simulato 10.000 volte come potrebbe muoversi il prezzo nelle prossime ${dur}, pescando mosse vere del passato. Ogni simulazione parte ${from}.</p>`
+        + `<p>Sei in <b>${buy ? "BUY: compri e guadagni se il prezzo sale" : "SHORT: vendi e guadagni se il prezzo scende"}</b>. Il <span class="up">target</span> (linea verde, ${fp(b.target)}) sta ${buy ? "sopra" : "sotto"} l'ingresso: ci arrivi se il prezzo ${buy ? "sale" : "scende"}. Lo <span class="down">stop</span> (linea rossa, ${fp(r.stop)}) sta ${buy ? "sotto" : "sopra"}: ti ferma se il prezzo ${buy ? "scende" : "sale"}. 1R = ${fmt(r.risk)}, cioè la distanza tra ingresso e stop.</p>`
+        + `<p>La <b>linea blu</b> è il percorso più probabile. La fascia scura contiene metà dei percorsi, la chiara 9 su 10.${m ? ` In <b>${pct(m.target)}</b> dei casi il prezzo ha toccato prima il target, in <b>${pct(m.stop)}</b> prima lo stop, nel ${pct(m.none)} nessuno dei due entro ${dur}.` : ""} Dopo lo stop il percorso resta fermo sullo stop.</p>`
+        + `<p class="muted">${S.axisTm === "p" ? "Il grafico segue il prezzo: in alto = prezzo che sale, in basso = prezzo che scende" + (labP ? ". I prezzi a destra sono quelli del tuo grafico se hai scritto il prezzo MT5." : ".") : "Il grafico è in R, cioè nel tuo guadagno: verso l'alto vuol dire guadagnare, sia nel BUY sia nello SHORT."}</p>`;
     }
   }
   /* casistiche */
@@ -372,19 +393,27 @@ function renderTm() {
   if (kc) {
     const { c, w, h } = kc, ml = 8, mr = 44, mt = 10, mb = 22;
     const maxLen = Math.max(2, ...cases.map((x) => (x.out[k2] ? x.out[k2][2] : x.path.length) + 1));
-    const ymin = -1.4, ymax = S.rr + 0.6;
+    const rmin = -1.4, rmax = S.rr + 0.6, ymin = flip ? -rmax : rmin, ymax = flip ? -rmin : rmax;
     S.zdom.cases = { dmin: 0, dmax: maxLen - 1, defSpan: maxLen - 1, ml, mr }; const VC = zView("cases", 0, maxLen - 1, maxLen - 1);
-    const { Y, Xs } = drawAxesR(c, w, h, VC.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VC.hi);
+    const { Y, Xs } = drawAxesR(c, w, h, VC.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VC.hi, null, flip, S.axisTm === "p");
     c.save(); c.beginPath(); c.rect(ml, 0, w - ml - mr, h); c.clip();
     const pts = (x) => { const o = x.out[k2]; if (!o) return []; let p = x.path.slice(0, o[2] + 1); if (o[0] === "target") p[p.length - 1] = S.rr; if (o[0] === "stop") p[p.length - 1] = -1; return p; };
     const colOf = (o) => (o[0] === "target" ? css("--green") : o[0] === "stop" ? css("--red") : "#9aa3b2");
+    const line = (p) => { c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(tr(v))) : c.moveTo(Xs(i), Y(tr(v))))); c.stroke(); };
     c.lineWidth = 1;
-    cases.forEach((x, idx) => { const o = x.out[k2]; if (!o || o[0] === "open" || idx === S.selCase) return; const p = pts(x); c.strokeStyle = colOf(o); c.globalAlpha = 0.22; c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); });
+    cases.forEach((x, idx) => { const o = x.out[k2]; if (!o || o[0] === "open" || idx === S.selCase) return; c.strokeStyle = colOf(o); c.globalAlpha = 0.22; line(pts(x)); });
     c.globalAlpha = 1;
-    if (S.selCase != null && cases[S.selCase]) { const x = cases[S.selCase], o = x.out[k2]; if (o) { const p = pts(x); c.strokeStyle = css("--ink"); c.lineWidth = 3; c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); } }
+    if (S.selCase != null && cases[S.selCase]) { const x = cases[S.selCase], o = x.out[k2]; if (o) { c.strokeStyle = css("--ink"); c.lineWidth = 3; line(pts(x)); } }
     c.restore();
     c.fillStyle = css("--muted"); c.textAlign = "center"; c.fillText("barre dall'ingresso", (w - mr) / 2, h - 6);
   }
+  const nn = stats.length, hit = tgt + stp, need = 1 / (1 + S.rr);
+  $("#caseDesc").innerHTML = nn
+    ? `<p><b>Cosa stai guardando.</b> ${nn} operazioni passate in cui questa stessa regola (${res.label}) ha dato un segnale <b>${buy ? "BUY" : "SHORT"}</b>, seguite fino alla fine. Ogni linea è una di quelle operazioni, a partire dall'ingresso (a sinistra).</p>`
+      + `<p><span class="up">Verde</span> = è arrivata al target (${S.rr}R). <span class="down">Rossa</span> = è stata fermata dallo stop. Grigia = non è arrivata né all'uno né all'altro. Su ${nn}: <b>${tgt}</b> verdi (${pct(tgt / nn)}), <b>${stp}</b> rosse (${pct(stp / nn)}), ${non} grigie.</p>`
+      + `<p>${flip ? "Il grafico segue il prezzo: nello SHORT il target sta in basso, perché guadagni quando il prezzo scende." : S.axisTm === "p" ? "Il grafico segue il prezzo: nel BUY il target sta in alto, perché guadagni quando il prezzo sale." : "Il grafico è in R, cioè nel tuo guadagno: verso l'alto vuol dire guadagnare, sia nel BUY sia nello SHORT. Passa a Prezzo per vedere la direzione del prezzo."}</p>`
+      + `<p>Per andare in pareggio con un target a ${S.rr}R serve che almeno il <b>${pct(need)}</b> delle operazioni che toccano target o stop arrivi al target. Qui è il <b>${hit ? pct(tgt / hit) : "–"}</b>. R medio ${sgn(avg)}: ${avg > 0.05 ? "in media queste operazioni guadagnavano" : avg < -0.05 ? "in media queste operazioni perdevano" : "in media erano in pareggio"}.</p>`
+    : `<p class="muted">Non ci sono ancora operazioni passate chiuse per questa regola e questa direzione.</p>`;
   $("#caseGrid").innerHTML = cases.map((x, i) => { const o = x.out[k2]; if (!o || o[0] === "open") return ""; return `<i class="${o[0] === "target" ? "t" : o[0] === "stop" ? "s" : "n"}${i === S.selCase ? " sel" : ""}" data-i="${i}" title="${x.label} · ${o[0]} · ${sgn(o[1])}R"></i>`; }).join("");
   $$("#caseGrid i").forEach((e) => (e.onclick = () => { S.selCase = +e.dataset.i; const x = cases[S.selCase]; $("#caseNote").textContent = `Selezionata: ${x.label}, ${x.out[k2][0]}, ${sgn(x.out[k2][1])}R.`; renderTm(); }));
 }
@@ -396,7 +425,7 @@ let alTimer = null, audioCtx = null;
 function saveAl() { localStorage.setItem("xau_alerts", JSON.stringify(AL)); localStorage.setItem("xau_seen", JSON.stringify([...seen].slice(-300))); }
 function buildAlertUi() {
   const mk = (id, vals, sel, cb) => { $(id).innerHTML = vals.map(([v, l]) => `<label class="chip"><input type="checkbox" value="${v}" ${sel.includes(v) ? "checked" : ""}><span>${l}</span></label>`).join(""); $$(id + " input").forEach((i) => (i.onchange = () => { cb($$(id + " input:checked").map((x) => x.value)); saveAl(); })); };
-  mk("#alTf", [["5m", "5 min"], ["15m", "15 min"], ["1h", "1 ora"], ["4h", "4 ore"]], AL.tfs, (v) => (AL.tfs = v));
+  mk("#alTf", [["1m", "1 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 ora"], ["4h", "4 ore"]], AL.tfs, (v) => (AL.tfs = v));
   const ses = (S.ov && S.ov.sessions) || { london: "Londra", ny: "New York" };
   mk("#alSetup", [["breakout", "Breakout"], ...Object.entries(ses).map(([k, l]) => [k, "Apertura " + l.replace(" (Borsa)", "")])], AL.setups, (v) => (AL.setups = v));
   $$("input[name=alStance]").forEach((i) => { i.checked = i.value === AL.stance; i.onchange = () => { AL.stance = i.value; saveAl(); }; });
@@ -415,9 +444,10 @@ $("#alToggle").onclick = async () => {
   saveAl(); buildAlertUi(); schedulePoll(true);
 };
 function schedulePoll(now) { clearInterval(alTimer); if (AL.on) { if (now) pollSignals(); alTimer = setInterval(pollSignals, 60000); } }
-async function pollSignals() {
+async function pollSignals(show) {
   try {
-    const q = new URLSearchParams({ symbol: S.symbol, tfs: AL.tfs.join(","), setups: AL.setups.join(","), rr: S.rr });
+    const tfs = [...new Set([S.tf, ...AL.tfs])].slice(0, 8), setups = [...new Set([S.setup, ...AL.setups])].slice(0, 3);
+    const q = new URLSearchParams({ symbol: S.symbol, tfs: tfs.join(","), setups: setups.join(","), rr: S.rr });
     if (S.spot) q.set("spot", S.spot);
     const r = await api("/api/signals?" + q.toString());
     const list = (r.signals || []).filter((s) => AL.stance === "all" ? s.stance !== "sfavorevole" : s.stance === "favorevole");
@@ -425,7 +455,9 @@ async function pollSignals() {
     const jr = loadLocalJournal(); let added = false;
     (r.signals || []).forEach((s) => { if (!jr.some((x) => x.id === s.id)) { jr.push(Object.assign({}, s, { status: "open", r: null })); added = true; } });
     if (added) saveLocalJournal(jr);
-    list.forEach((s) => {
+    const hh = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+    $("#alDiag").innerHTML = `Ultimo controllo alle <b>${hh}</b> su: ${tfs.join(", ")} (${setups.join(", ")}) con target ${S.rr}R. Segnali freschi: <b>${(r.signals || []).length}</b>, di cui da notificare: <b>${list.length}</b>. Avvisi: <b>${AL.on ? "ATTIVI" : "SPENTI (nessun suono né notifica)"}</b>.${(r.errors || []).length ? " Errori: " + r.errors.join("; ") : ""}`;
+    if (AL.on) list.forEach((s) => {
       if (seen.has(s.id)) return; seen.add(s.id);
       const t = `${s.dir === "buy" ? "BUY" : "SHORT"} ${s.symbol} · ${s.label}`;
       const body = `Ingresso ${fmt(s.entry + off())}, stop ${fmt(s.stop + off())}, target ${s.rr}R ${fmt(s.target + off())}. Giudizio: ${(STANCE[s.stance] || [s.stance])[0]}.`;
@@ -475,12 +507,12 @@ async function initClaude() {
 }
 
 /* ---------- avvio ---------- */
-loadAuto(); initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
+initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAxisSegs(); buildAlertUi(); initClaude();
 load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 90000);
 
 /* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
-const OPP_TFS = ["5m", "15m", "1h", "4h", "1d", "1w"];
+const OPP_TFS = ["5m", "15m", "30m", "1h", "4h", "1d", "1w"];
 let oppRunning = false;
 function closeOpp() { $("#oppSheet").hidden = true; document.body.style.overflow = ""; }
 function applyOpp(c) {
@@ -620,3 +652,4 @@ function drawAutoEq(eq) {
 
 /* ---------- app installabile ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* senza service worker funziona uguale */ });
+loadAuto();
