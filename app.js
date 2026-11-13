@@ -105,7 +105,7 @@ function setActive(name) {
   if (S.tab === name) return;
   S.tab = name; document.body.dataset.tab = name;
   $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
-  if (name === "avvisi") loadJournal();
+  if (name === "avvisi") { loadJournal(); loadAuto(); }
   renderChart(); renderTm();
 }
 function goTab(name, instant) {
@@ -128,7 +128,7 @@ $$("[data-open]").forEach((b) => (b.onclick = () => $(`#tabs [data-tab=${b.datas
 $("#symbol").onchange = () => { S.symbol = $("#symbol").value.trim().toUpperCase() || "XAUUSD"; S.ov = null; S.setup = "breakout"; load(); };
 $("#spot").onchange = () => { S.spot = $("#spot").value.replace(",", ".").trim(); load(); };
 ["#pN", "#pAm", "#pHold", "#pOr", "#pRep"].forEach((id) => ($(id).onchange = () => load()));
-window.addEventListener("resize", () => { renderChart(); renderTm(); loadJournalChart(); });
+window.addEventListener("resize", () => { renderChart(); renderTm(); loadJournalChart(); renderAuto(); });
 
 /* ---------- render principale ---------- */
 function render() {
@@ -475,7 +475,7 @@ async function initClaude() {
 }
 
 /* ---------- avvio ---------- */
-initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
+loadAuto(); initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
 load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 90000);
 
@@ -577,6 +577,46 @@ $$("[data-oppopen]").forEach((b) => (b.onclick = () => openOpp()));
 $("#oppClose").onclick = closeOpp;
 $("#oppSheet").onclick = (e) => { if (e.target.id === "oppSheet") closeOpp(); };
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#oppSheet").hidden) closeOpp(); });
+
+/* ---------- segnali automatici (registro scritto dal controllo su GitHub) ---------- */
+const LOG_URL = "https://raw.githubusercontent.com/ruspinluca-143/xau-analisi/dati/log.json";
+let AUTO = null;
+async function loadAuto() {
+  try {
+    const r = await fetch(LOG_URL + "?t=" + Date.now(), { cache: "no-store" });
+    AUTO = r.ok ? await r.json() : [];
+  } catch (e) { AUTO = null; }
+  renderAuto();
+}
+function autoStats(sub) {
+  const n = sub.length; if (!n) return null;
+  const w = sub.filter((x) => x.status === "target").length, l = sub.filter((x) => x.status === "stop").length;
+  return { n, w, l, none: n - w - l, win: w / n, avg: sub.reduce((a, x) => a + x.r, 0) / n, tot: sub.reduce((a, x) => a + x.r, 0) };
+}
+function renderAuto() {
+  const st = $("#autoStats"), tb = $("#autoTable");
+  if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
+  if (!AUTO.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale registrato. Il controllo automatico li salva man mano che compaiono (anche quelli non favorevoli, col loro giudizio).</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
+  const closed = AUTO.filter((x) => ["target", "stop", "none"].includes(x.status)), fav = closed.filter((x) => x.stance === "favorevole");
+  const open = AUTO.filter((x) => x.status === "open").length;
+  const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
+  st.innerHTML = box("Solo favorevoli (quelli per cui ti ho avvisato)", autoStats(fav)) + `<div class="stat"><span>Ancora aperti</span><b>${open}</b></div>`;
+  const groups = {}; closed.forEach((x) => (groups[x.stance] = groups[x.stance] || []).push(x));
+  $("#autoStance").innerHTML = Object.entries(groups).map(([k, v]) => { const s = autoStats(v); return `<div class="stat"><span>Giudizio: ${(STANCE[k] || [k])[0]}</span><b style="font-size:15px">${s.n} segnali · R medio ${sgn(s.avg)}</b></div>`; }).join("");
+  const rows = AUTO.slice().sort((a, b) => b.entry_ts - a.entry_ts).slice(0, 40);
+  tb.innerHTML = `<table><tr><th>Quando</th><th>Segnale</th><th>Ingresso</th><th>Stop</th><th>Target</th><th>Giudizio</th><th>Esito</th></tr>${rows.map((x) => `<tr><td class="l">${tIT(x.entry_ts, true)}</td><td class="l"><b class="dir ${x.dir}" style="font-size:13px">${x.dir === "buy" ? "BUY" : "SHORT"}</b> ${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</td><td>${fmt(x.entry)}</td><td>${fmt(x.stop)}</td><td>${x.rr}R ${fmt(x.target)}</td><td>${stancePill(x.stance)}</td><td>${x.status === "open" ? '<span class="pill amber">aperto</span>' : x.status === "nd" ? '<span class="pill">n.d.</span>' : `<span class="pill ${x.status === "target" ? "green" : x.status === "stop" ? "red" : ""}">${x.status === "target" ? "target" : x.status === "stop" ? "stop" : "chiuso"} ${sgn(x.r)}R</span>`}</td></tr>`).join("")}</table>`;
+  const eq = []; let run = 0;
+  fav.slice().sort((a, b) => (a.exit_ts || a.entry_ts) - (b.exit_ts || b.entry_ts)).forEach((x) => { run += x.r; eq.push([x.exit_ts || x.entry_ts, run]); });
+  drawAutoEq(eq);
+}
+function drawAutoEq(eq) {
+  const k = setupCanvas($("#cvAuto")); if (!k) return; const { c, w, h } = k;
+  if (eq.length < 2) { c.fillStyle = css("--muted"); c.font = "13px sans-serif"; c.fillText("La curva dei favorevoli appare dopo i primi due esiti.", 8, 24); return; }
+  const ml = 8, mr = 44, mt = 10, mb = 18, ys = eq.map((e) => e[1]).concat([0]), lo = Math.min(...ys) - 0.3, hi = Math.max(...ys) + 0.3;
+  const X = (i) => ml + i / (eq.length - 1) * (w - ml - mr), Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
+  c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.textAlign = "left"; niceTicks(lo, hi, 4).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(t.toFixed(1) + "R", w - mr + 6, Y(t) + 4); });
+  const last = eq[eq.length - 1][1]; c.strokeStyle = last >= 0 ? css("--green") : css("--red"); c.lineWidth = 2.4; c.beginPath(); eq.forEach((e, i) => (i ? c.lineTo(X(i), Y(e[1])) : c.moveTo(X(i), Y(e[1])))); c.stroke();
+}
 
 /* ---------- app installabile ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* senza service worker funziona uguale */ });

@@ -1,6 +1,7 @@
 name: Avvisi
 
-# Ogni 5 minuti controlla se c'è un segnale favorevole e manda la notifica sul telefono (ntfy).
+# Ogni 5 minuti: cerca i segnali, avvisa sul telefono quelli favorevoli (ntfy), li registra tutti e segue gli esiti.
+# Il registro (log.json) sta nel ramo "dati" e NON nel ramo principale, così Render non ripubblica il sito a ogni salvataggio.
 # GitHub può ritardare i controlli di qualche minuto: non è istantaneo.
 on:
   schedule:
@@ -12,25 +13,35 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   controlla:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Ripristina i segnali già notificati
-        uses: actions/cache@v4
-        with:
-          path: seen.json
-          key: seen-${{ github.run_id }}
-          restore-keys: |
-            seen-
-      - name: Controlla e notifica
+      - name: Prepara il registro dei segnali (ramo dati)
+        run: |
+          if git ls-remote --exit-code --heads origin dati >/dev/null 2>&1; then
+            git fetch origin dati
+            git worktree add -B dati dati origin/dati
+          else
+            git worktree add --orphan -b dati dati
+          fi
+      - name: Controlla, avvisa e registra
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          LOG_FILE: dati/log.json
         run: python notify.py ${{ github.event_name == 'workflow_dispatch' && '--test' || '' }}
+      - name: Salva il registro
+        run: |
+          cd dati
+          git add -A
+          if ! git diff --cached --quiet; then
+            git -c user.name="avvisi-bot" -c user.email="avvisi-bot@users.noreply.github.com" commit -q -m "Registro segnali $(date -u '+%Y-%m-%d %H:%M') UTC"
+            git push origin HEAD:dati
+          fi

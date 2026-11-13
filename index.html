@@ -115,6 +115,15 @@
       <div class="row gap"><button id="alToggle" class="btn primary">Attiva avvisi</button><button id="alTest" class="btn">Prova suono</button><span id="alStatus" class="muted small"></span></div>
       <div id="alList" class="siglist"></div>
     </div>
+    <div class="card" id="autoCard">
+      <h3>Segnali automatici (anche con l'app chiusa)</h3>
+      <p class="muted small">Ogni segnale che il controllo automatico ha visto, con com'è andata. È il tuo backtest in tempo reale: anche quelli che non hai visto.</p>
+      <div id="autoStats" class="statrow"></div>
+      <canvas id="cvAuto" class="cv short"></canvas>
+      <div id="autoStance" class="statrow"></div>
+      <div id="autoTable" class="tablewrap"></div>
+      <p class="muted small" id="autoNote">Prezzi dei dati (possono differire di qualche dollaro dal tuo grafico). R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop). Si aggiorna ogni pochi minuti.</p>
+    </div>
     <div class="card">
       <h3>Report dei segnali</h3>
       <div id="jStats" class="statrow"></div>
