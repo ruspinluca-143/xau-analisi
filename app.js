@@ -105,19 +105,26 @@ function buildDirSegs() {
 const TAB_ORDER = ["oggi", "grafico", "tm", "avvisi"];
 const pager = $("#pager"), panes = TAB_ORDER.map((t) => $("#tab-" + t));
 const pagerStep = () => pager.clientWidth + 16;
+let heavyTimer = 0;
 function setActive(name) {
   if (S.tab === name) return;
   S.tab = name; document.body.dataset.tab = name;
   $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
-  if (name === "avvisi") { loadJournal(); loadAuto(); pollSignals(true); }
-  renderChart(); renderTm();
+  // i disegni pesanti partono solo quando lo scorrimento si ferma: così il dito non scatta
+  clearTimeout(heavyTimer);
+  heavyTimer = setTimeout(() => { if (name === "avvisi") { loadJournal(); loadAuto(); pollSignals(true); } renderChart(); renderTm(); }, 140);
 }
 function goTab(name, instant) {
   window.scrollTo({ top: 0, behavior: instant ? "auto" : "smooth" });
   pager.scrollTo({ left: TAB_ORDER.indexOf(name) * pagerStep(), behavior: instant ? "auto" : "smooth" });
   setActive(name);
 }
+let pagerRaf = 0;
 function onPagerScroll() {
+  if (pagerRaf) return;
+  pagerRaf = requestAnimationFrame(() => { pagerRaf = 0; pagerUpdate(); });
+}
+function pagerUpdate() {
   const f = Math.min(TAB_ORDER.length - 1, Math.max(0, pager.scrollLeft / pagerStep())), a = Math.floor(f), b = Math.min(TAB_ORDER.length - 1, Math.ceil(f)), t = f - a;
   const ha = panes[a].offsetHeight, hb = panes[b].offsetHeight;
   pager.style.height = Math.max(120, ha + (hb - ha) * t) + "px"; // l'altezza segue le due schermate visibili

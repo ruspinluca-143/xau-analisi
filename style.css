@@ -148,10 +148,18 @@ canvas.cv:active{cursor:grabbing}
 .opp-none{background:var(--amber-bg);border-radius:16px;padding:12px 14px;margin:8px 0}
 
 /* schermate affiancate: si scorre da destra a sinistra, a metà strada si vedono entrambe */
-.pager{display:flex;gap:16px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;align-items:flex-start;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.pager{display:flex;will-change:scroll-position;gap:16px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;align-items:flex-start;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
 .pager::-webkit-scrollbar{display:none}
-.pager .tab{display:block;flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always}
+.pager .tab{display:block;flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;contain:layout paint}
 [hidden]{display:none !important}
 
-canvas.cv.small{height:140px}
+canvas.cv.small{height:280px}
 .row.between{flex-wrap:wrap;gap:8px}
+/* maneggevolezza al tocco: niente ritardo, niente evidenziazione grigia, risposta immediata alla pressione */
+html{-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button,.seg button,.item,#tabs button,a{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+button{transition:transform .08s ease,opacity .15s ease}
+button:active{transform:scale(.96);opacity:.85}
+.seg button{min-height:38px}
+.pager{scroll-behavior:auto}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
