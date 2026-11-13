@@ -41,16 +41,38 @@ function baseQuery(extra) {
 }
 
 /* ---------- caricamento ---------- */
-async function load(silent) {
+/* barra di caricamento: si riempie con le richieste completate e col tempo; dopo 6 s avvisa che il servizio si sta svegliando */
+const LB = { t: null, start: 0, done: 0, total: 1 };
+function lbSet(p, label) {
+  $("#loadbar i").style.width = p + "%";
+  const l = $("#loadlbl"); l.textContent = label; l.classList.add("on");
+}
+function lbStart(total) {
+  clearInterval(LB.t); LB.start = Date.now(); LB.done = 0; LB.total = total;
+  $("#loadbar").classList.add("on"); lbSet(4, "Carico i dati… 4%");
+  LB.t = setInterval(() => {
+    const s = (Date.now() - LB.start) / 1000, base = (LB.done / LB.total) * 55;
+    const p = Math.min(93, base + (1 - Math.exp(-s / 9)) * (90 - base));
+    lbSet(p, (s > 6 && LB.done === 0 ? "Sto svegliando il servizio (fino a 1 minuto)… " : "Carico i dati… ") + Math.round(p) + "%");
+  }, 250);
+}
+function lbEnd() {
+  clearInterval(LB.t); lbSet(100, "Fatto 100%");
+  setTimeout(() => { $("#loadbar").classList.remove("on"); $("#loadlbl").classList.remove("on"); setTimeout(() => ($("#loadbar i").style.width = "0%"), 400); }, 450);
+}
+async function load(silent, quiet) {
   const my = ++S.seq;
   if (!silent) { showMsg(""); $("#hRead").textContent = "Carico i dati…"; }
+  if (!quiet) lbStart(2);
+  const tick = (r) => { LB.done++; return r; };
   try {
-    const [ov, st] = await Promise.all([api("/api/overview?" + baseQuery()), api("/api/setup?" + baseQuery())]);
+    const [ov, st] = await Promise.all([api("/api/overview?" + baseQuery()).then(tick), api("/api/setup?" + baseQuery()).then(tick)]);
     if (my !== S.seq) return;
     S.ov = ov; S.data = st; S.gold = ov.gold;
     buildSetupSeg(); render();
+    if (!quiet) lbEnd();
   } catch (e) {
-    if (my === S.seq) showMsg("Non riesco a leggere i dati: " + e.message);
+    if (my === S.seq) { showMsg("Non riesco a leggere i dati: " + e.message); if (!quiet) lbEnd(); }
   }
 }
 
@@ -172,10 +194,64 @@ function niceTicks(lo, hi, n) {
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
   const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v); return out;
 }
+/* ---------- zoom e spostamento dei grafici ---------- */
+S.zdom = {}; // per ogni grafico: dominio dei dati e margini (aggiornato a ogni disegno)
+const ZOOM = {}; // per ogni grafico: { span: ampiezza visibile, right: quanto resta nascosto a destra }
+const MINSPAN = { candles: 8, fan: 4, cases: 4 };
+function zView(k, dmin, dmax, defSpan) {
+  const full = Math.max(1e-9, dmax - dmin), z = ZOOM[k];
+  const span = Math.min(Math.max(z ? z.span : defSpan, Math.min(full, MINSPAN[k])), full);
+  const right = Math.min(Math.max(z ? z.right : 0, 0), full - span), hi = dmax - right;
+  return { lo: hi - span, hi, span, right, full };
+}
+function attachZoom(cv, k, dom, redraw) {
+  const pts = new Map();
+  const cur = () => { const d = dom(); return { d, v: zView(k, d.dmin, d.dmax, d.defSpan) }; };
+  const apply = (span, frac, anchor) => {
+    const d = dom(), full = d.dmax - d.dmin;
+    span = Math.min(Math.max(span, Math.min(full, MINSPAN[k])), full);
+    let lo = anchor - frac * span, hi = lo + span;
+    if (hi > d.dmax) { hi = d.dmax; lo = hi - span; }
+    if (lo < d.dmin) { lo = d.dmin; hi = lo + span; }
+    ZOOM[k] = { span, right: d.dmax - hi }; redraw();
+  };
+  const fracOf = (clientX) => { const { d } = cur(), r = cv.getBoundingClientRect(); return Math.min(1, Math.max(0, (clientX - r.left - d.ml) / Math.max(1, r.width - d.ml - d.mr))); };
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); const { v } = cur(), f = fracOf(e.clientX); apply(v.span * (e.deltaY > 0 ? 1.18 : 1 / 1.18), f, v.lo + f * v.span); }, { passive: false });
+  cv.addEventListener("pointerdown", (e) => { pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { cv.setPointerCapture(e.pointerId); } catch (_) { /* niente */ } });
+  cv.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId), { d, v } = cur(), r = cv.getBoundingClientRect(), pw = Math.max(1, r.width - d.ml - d.mr);
+    if (pts.size === 1) {
+      const dx = e.clientX - prev.x; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (dx) apply(v.span, 0, v.lo - dx / pw * v.span);
+    } else if (pts.size === 2) {
+      const other = [...pts.entries()].find(([id]) => id !== e.pointerId)[1];
+      const dPrev = Math.abs(prev.x - other.x) || 1, dNow = Math.abs(e.clientX - other.x) || 1;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const f = fracOf((e.clientX + other.x) / 2); apply(v.span * dPrev / dNow, f, v.lo + f * v.span);
+    }
+  });
+  const up = (e) => pts.delete(e.pointerId);
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up); cv.addEventListener("pointerleave", up);
+  cv.addEventListener("dblclick", () => { delete ZOOM[k]; redraw(); });
+  return { by(factor) { const { v } = cur(); apply(v.span * factor, 0.5, v.lo + 0.5 * v.span); }, reset() { delete ZOOM[k]; redraw(); } };
+}
+function initZoom() {
+  [["cvCandles", "candles", () => renderChart()], ["cvFan", "fan", () => renderTm()], ["cvCases", "cases", () => renderTm()]].forEach(([id, k, fn]) => {
+    const cv = $("#" + id), box = document.createElement("div"); box.className = "chartbox";
+    cv.parentNode.insertBefore(box, cv); box.appendChild(cv);
+    const bar = document.createElement("div"); bar.className = "zoombar";
+    bar.innerHTML = '<button data-a="in" title="Ingrandisci">+</button><button data-a="out" title="Rimpicciolisci">−</button><button data-a="reset" title="Ripristina">⟲</button>';
+    box.appendChild(bar);
+    const z = attachZoom(cv, k, () => S.zdom[k] || { dmin: 0, dmax: 1, defSpan: 1, ml: 8, mr: 44 }, fn);
+    bar.onclick = (e) => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.a === "in") z.by(1 / 1.4); else if (b.dataset.a === "out") z.by(1.4); else z.reset(); };
+  });
+}
+
 function renderChart() {
   if (S.tab !== "grafico" || !S.data) return;
   const cv = $("#cvCandles"), k = setupCanvas(cv); if (!k) return;
-  const { c, w, h } = k, ch = S.data.chart, bars = ch.bars;
+  const { c, w, h } = k, ch = S.data.chart, bars = ch.bars, n = bars.length;
   $("#chartTitle").textContent = S.ov.name + " · " + S.tf;
   const r = S.data.result && S.data.result.dirs ? S.data.result.dirs[S.dir] : null, b = r && r.blocks ? r.blocks[key(S.rr)] : null;
   const levels = [];
@@ -184,36 +260,44 @@ function renderChart() {
     levels.push({ y: r.stop, label: "Stop", col: css("--red") });
     if (b && b.target != null) levels.push({ y: b.target, label: "Target " + S.rr + "R", col: css("--green") });
   }
-  const ml = 8, mr = 70, mt = 10, mb = 22, o = off();
+  const ml = 8, mr = 70, mt = 10, mb = 22, o = off(), pw = w - ml - mr;
+  S.zdom.candles = { dmin: 0, dmax: n, defSpan: Math.min(120, n), ml, mr };
+  const V = zView("candles", 0, n, Math.min(120, n));
+  const i0 = Math.max(0, Math.floor(V.lo)), i1 = Math.min(n - 1, Math.ceil(V.hi));
   let lo = Infinity, hi = -Infinity;
-  bars.forEach((x) => { lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); });
+  for (let i = i0; i <= i1; i++) { lo = Math.min(lo, bars[i][3]); hi = Math.max(hi, bars[i][2]); }
   levels.forEach((l) => { lo = Math.min(lo, l.y); hi = Math.max(hi, l.y); });
   const pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
-  const X = (i) => ml + (i + 0.5) * ((w - ml - mr) / bars.length), Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
+  const X = (i) => ml + (i + 0.5 - V.lo) / V.span * pw, Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1; c.textAlign = "left";
   niceTicks(lo + o, hi + o, 5).forEach((t) => { const y = Y(t - o); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.fillText(fmt(t), w - mr + 6, y + 4); });
-  const step = (w - ml - mr) / bars.length, bw = Math.max(1, step * 0.62);
-  bars.forEach((x, i) => {
-    const up = x[4] >= x[1], col = up ? css("--green") : css("--red");
+  const bw = Math.max(1, pw / V.span * 0.62);
+  c.save(); c.beginPath(); c.rect(ml, 0, pw, h); c.clip();
+  for (let i = i0; i <= i1; i++) {
+    const x = bars[i], up = x[4] >= x[1], col = up ? css("--green") : css("--red");
     c.strokeStyle = col; c.fillStyle = col; c.beginPath(); c.moveTo(X(i), Y(x[2])); c.lineTo(X(i), Y(x[3])); c.stroke();
     const y1 = Y(x[1]), y2 = Y(x[4]); c.fillRect(X(i) - bw / 2, Math.min(y1, y2), bw, Math.max(1, Math.abs(y2 - y1)));
-  });
+  }
   [[ch.sma20, css("--blue")], [ch.sma50, css("--violet")]].forEach(([arr, col]) => {
     c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); let on = false;
-    arr.forEach((v, i) => { if (v == null) return; const px = X(i), py = Y(v); on ? c.lineTo(px, py) : c.moveTo(px, py); on = true; }); c.stroke();
+    for (let i = Math.max(0, i0 - 1); i <= Math.min(n - 1, i1 + 1); i++) { const v = arr[i]; if (v == null) continue; const px = X(i), py = Y(v); on ? c.lineTo(px, py) : c.moveTo(px, py); on = true; }
+    c.stroke();
   });
-  c.lineWidth = 1; c.textAlign = "left";
-  levels.forEach((l) => {
-    c.strokeStyle = l.col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, Y(l.y)); c.lineTo(w - mr, Y(l.y)); c.stroke(); c.setLineDash([]);
-    c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(l.label, w - mr + 4, Y(l.y) + 3.5);
-  });
+  c.lineWidth = 1;
+  levels.forEach((l) => { c.strokeStyle = l.col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, Y(l.y)); c.lineTo(w - mr, Y(l.y)); c.stroke(); c.setLineDash([]); });
+  c.restore();
+  c.textAlign = "left";
+  levels.forEach((l) => { c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(l.label, w - mr + 4, Y(l.y) + 3.5); });
   c.font = "11px sans-serif"; c.fillStyle = css("--muted"); c.textAlign = "center";
-  const every = Math.ceil(bars.length / 6);
-  bars.forEach((x, i) => { if (i % every === 0) c.fillText(ch.sec >= 86400 ? dIT(x[0]) : tIT(x[0], ch.sec >= 3600 && ch.sec < 86400 ? false : false) + (ch.sec >= 3600 ? " " + dIT(x[0]) : ""), X(i), h - 6); });
+  const every = Math.max(1, Math.ceil(V.span / 6));
+  for (let i = Math.ceil(V.lo); i < Math.min(n, Math.floor(V.hi)); i++) {
+    if (i % every !== 0) continue; const t = bars[i][0];
+    c.fillText(ch.sec >= 86400 ? dIT(t) : ch.sec >= 3600 ? tIT(t) + " " + dIT(t) : tIT(t), Math.min(Math.max(X(i), ml + 24), w - mr - 24), h - 6);
+  }
 }
 
-function drawAxesR(c, w, h, x1, ymin, ymax, ml, mr, mt, mb, rr, steps) {
-  const Y = (v) => mt + (ymax - v) / (ymax - ymin) * (h - mt - mb), Xs = (i) => ml + i / Math.max(1, steps) * (w - ml - mr);
+function drawAxesR(c, w, h, lo, ymin, ymax, ml, mr, mt, mb, rr, hi) {
+  const Y = (v) => mt + (ymax - v) / (ymax - ymin) * (h - mt - mb), Xs = (i) => ml + (i - lo) / Math.max(1e-9, hi - lo) * (w - ml - mr);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1; c.textAlign = "left"; c.font = "11px sans-serif";
   niceTicks(ymin, ymax, 5).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(t.toFixed(t % 1 ? 1 : 0) + "R", w - mr + 6, Y(t) + 4); });
   [[rr, css("--green"), "Target"], [-1, css("--red"), "Stop"], [0, css("--muted"), "Ingresso"]].forEach(([v, col, lab]) => {
@@ -221,6 +305,7 @@ function drawAxesR(c, w, h, x1, ymin, ymax, ml, mr, mt, mb, rr, steps) {
   });
   return { Y, Xs };
 }
+
 function renderTm() {
   if (S.tab !== "tm" || !S.data) return;
   const res = S.data.result; if (!res || !res.dirs) return;
@@ -238,17 +323,20 @@ function renderTm() {
     else {
       const ml = 8, mr = 44, mt = 10, mb = 24, n = f.steps, bd = f.bands;
       const ymin = Math.min(-1.4, ...bd.p5) - 0.1, ymax = Math.max(S.rr + 0.5, ...bd.p95) + 0.1;
-      const { Y, Xs } = drawAxesR(c, w, h, 0, ymin, ymax, ml, mr, mt, mb, S.rr, n);
+      S.zdom.fan = { dmin: 0, dmax: n, defSpan: n, ml, mr }; const VF = zView("fan", 0, n, n);
+      const { Y, Xs } = drawAxesR(c, w, h, VF.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VF.hi);
+      c.save(); c.beginPath(); c.rect(ml, 0, w - ml - mr, h); c.clip();
       c.lineWidth = 1; c.strokeStyle = css("--muted"); c.globalAlpha = 0.18;
       f.paths.forEach((p) => { c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); });
       c.globalAlpha = 1;
       const band = (lo, hi, col, a) => { c.fillStyle = col; c.globalAlpha = a; c.beginPath(); lo.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); for (let i = hi.length - 1; i >= 0; i--) c.lineTo(Xs(i), Y(hi[i])); c.closePath(); c.fill(); c.globalAlpha = 1; };
       band(bd.p5, bd.p95, css("--accent"), 0.10); band(bd.p25, bd.p75, css("--accent"), 0.18);
       c.strokeStyle = css("--accent"); c.lineWidth = 2.2; c.beginPath(); bd.p50.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke();
+      c.restore();
       c.fillStyle = css("--muted"); c.textAlign = "center"; c.font = "11px sans-serif";
       const sec = res.sec || (S.data.chart && S.data.chart.sec) || 300;
-      [0, Math.round(n / 2), n].forEach((i) => { const m = Math.round(i * sec / 60); c.fillText(i === 0 ? "ora" : "+" + (m >= 180 ? (m / 60).toFixed(m % 60 ? 1 : 0).replace(".", ",") + " h" : m + " min"), Xs(i) + (i === n ? -14 : 0), h - 6); });
-      $("#tmFanNote").textContent = "Linea blu = esito mediano, fascia scura = dal 25% al 75% dei casi, fascia chiara = dal 5% al 95%, linee grigie = 40 ripetizioni di esempio. Dopo lo stop il percorso resta fermo a -1R. Il target è la linea verde a +" + S.rr + "R.";
+      [VF.lo, (VF.lo + VF.hi) / 2, VF.hi].forEach((i, q) => { i = Math.round(i); const m = Math.round(i * sec / 60); c.fillText(i === 0 ? "ora" : "+" + (m >= 180 ? (m / 60).toFixed(m % 60 ? 1 : 0).replace(".", ",") + " h" : m + " min"), Xs(i) + (q === 2 ? -14 : 0), h - 6); });
+      $("#tmFanNote").textContent = "Linea blu = esito mediano, fascia scura = dal 25% al 75% dei casi, fascia chiara = dal 5% al 95%, linee grigie = 40 ripetizioni di esempio. Dopo lo stop il percorso resta fermo a -1R. Il target è la linea verde a +" + S.rr + "R. Zoom: rotellina o pizzico, trascina per spostare, doppio tocco per ripristinare.";
     }
   }
   /* casistiche */
@@ -262,13 +350,16 @@ function renderTm() {
     const { c, w, h } = kc, ml = 8, mr = 44, mt = 10, mb = 22;
     const maxLen = Math.max(2, ...cases.map((x) => (x.out[k2] ? x.out[k2][2] : x.path.length) + 1));
     const ymin = -1.4, ymax = S.rr + 0.6;
-    const { Y, Xs } = drawAxesR(c, w, h, 0, ymin, ymax, ml, mr, mt, mb, S.rr, maxLen - 1);
+    S.zdom.cases = { dmin: 0, dmax: maxLen - 1, defSpan: maxLen - 1, ml, mr }; const VC = zView("cases", 0, maxLen - 1, maxLen - 1);
+    const { Y, Xs } = drawAxesR(c, w, h, VC.lo, ymin, ymax, ml, mr, mt, mb, S.rr, VC.hi);
+    c.save(); c.beginPath(); c.rect(ml, 0, w - ml - mr, h); c.clip();
     const pts = (x) => { const o = x.out[k2]; if (!o) return []; let p = x.path.slice(0, o[2] + 1); if (o[0] === "target") p[p.length - 1] = S.rr; if (o[0] === "stop") p[p.length - 1] = -1; return p; };
     const colOf = (o) => (o[0] === "target" ? css("--green") : o[0] === "stop" ? css("--red") : "#9aa3b2");
     c.lineWidth = 1;
     cases.forEach((x, idx) => { const o = x.out[k2]; if (!o || o[0] === "open" || idx === S.selCase) return; const p = pts(x); c.strokeStyle = colOf(o); c.globalAlpha = 0.22; c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); });
     c.globalAlpha = 1;
     if (S.selCase != null && cases[S.selCase]) { const x = cases[S.selCase], o = x.out[k2]; if (o) { const p = pts(x); c.strokeStyle = css("--ink"); c.lineWidth = 3; c.beginPath(); p.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(v)) : c.moveTo(Xs(i), Y(v)))); c.stroke(); } }
+    c.restore();
     c.fillStyle = css("--muted"); c.textAlign = "center"; c.fillText("barre dall'ingresso", (w - mr) / 2, h - 6);
   }
   $("#caseGrid").innerHTML = cases.map((x, i) => { const o = x.out[k2]; if (!o || o[0] === "open") return ""; return `<i class="${o[0] === "target" ? "t" : o[0] === "stop" ? "s" : "n"}${i === S.selCase ? " sel" : ""}" data-i="${i}" title="${x.label} · ${o[0]} · ${sgn(o[1])}R"></i>`; }).join("");
@@ -361,9 +452,9 @@ async function initClaude() {
 }
 
 /* ---------- avvio ---------- */
-buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
+initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
 load().then(() => { buildAlertUi(); schedulePoll(false); });
-setInterval(() => { if (!document.hidden) load(true); }, 90000);
+setInterval(() => { if (!document.hidden) load(true, true); }, 90000);
 
 /* ---------- app installabile ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* senza service worker funziona uguale */ });

@@ -187,7 +187,7 @@ def api_setup(q):
     info = E.price_info(ys, now_ts, num(q, "spot", None))
     closes = [b[E.C] for b in bars]
     s20, s50 = E.sma_list(closes, 20), E.sma_list(closes, 50)
-    cut = max(0, len(bars) - 160)
+    cut = max(0, len(bars) - 400)
     chart = {"tf": tf, "sec": E.TF[tf][2], "bars": [list(b) for b in bars[cut:]], "sma20": s20[cut:], "sma50": s50[cut:]}
     return {"symbol": sym.upper(), "tf": tf, "setup": setup, "rr": rr, "rrs": rrs, "result": st, "chart": chart,
             "explanation": explain(E.pretty_name(ys), E.is_gold(ys), info, st, rr, tf), "info": info}

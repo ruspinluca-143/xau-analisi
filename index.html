@@ -16,6 +16,8 @@
 </head>
 <body data-tab="oggi">
 <div class="glow"></div>
+<div class="loadbar" id="loadbar"><i></i></div>
+<div class="loadlbl" id="loadlbl"></div>
 <header class="top">
   <div class="avatar" title="Oro">Au</div>
   <label class="search">
@@ -79,7 +81,7 @@
     <div class="card">
       <div class="row between"><h3 id="chartTitle">Grafico</h3><div class="seg small" id="dirSeg1"></div></div>
       <canvas id="cvCandles" class="cv tall"></canvas>
-      <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta.</p>
+      <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta. Zoom: rotellina del mouse o pizzico con due dita; trascina per spostarti; doppio tocco o ⟲ per ripristinare; + e − per ingrandire o rimpicciolire.</p>
     </div>
   </section>
 
@@ -97,7 +99,7 @@
       <div id="casesStats" class="statrow"></div>
       <canvas id="cvCases" class="cv"></canvas>
       <div id="caseGrid" class="casegrid"></div>
-      <p class="muted small" id="caseNote">Ogni linea è un'operazione passata, in R (1R = il rischio). Verde = è arrivata al target, rosso = allo stop, grigio = né l'uno né l'altro. Tocca un quadratino per evidenziarla.</p>
+      <p class="muted small" id="caseNote">Ogni linea è un'operazione passata, in R (1R = il rischio). Verde = è arrivata al target, rosso = allo stop, grigio = né l'uno né l'altro. Tocca un quadratino per evidenziarla. Anche questo grafico si può ingrandire e spostare.</p>
     </div>
   </section>
 
