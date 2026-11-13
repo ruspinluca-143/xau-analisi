@@ -97,16 +97,34 @@ function buildRr() { seg($("#rrSeg"), RRS.map((r) => ({ label: r + "R", value: r
 function buildDirSegs() {
   ["#dirSeg1", "#dirSeg2"].forEach((id) => seg($(id), [{ label: "BUY", value: "buy" }, { label: "SHORT", value: "sell" }], S.dir, (v) => { S.dir = v; buildDirSegs(); renderChart(); renderTm(); }));
 }
-$("#tabs").onclick = (e) => {
-  const b = e.target.closest("button"); if (!b) return;
-  S.tab = b.dataset.tab; document.body.dataset.tab = S.tab; window.scrollTo({ top: 0, behavior: "smooth" });
-  $$("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
-  $$(".tab").forEach((x) => x.classList.toggle("on", x.id === "tab-" + S.tab));
-  renderChart(); renderTm(); if (S.tab === "avvisi") loadJournal();
-};
+/* ---------- schermate: scorrimento fluido da una all'altra ---------- */
+const TAB_ORDER = ["oggi", "grafico", "tm", "avvisi"];
+const pager = $("#pager"), panes = TAB_ORDER.map((t) => $("#tab-" + t));
+const pagerStep = () => pager.clientWidth + 16;
+function setActive(name) {
+  if (S.tab === name) return;
+  S.tab = name; document.body.dataset.tab = name;
+  $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
+  if (name === "avvisi") loadJournal();
+  renderChart(); renderTm();
+}
+function goTab(name, instant) {
+  window.scrollTo({ top: 0, behavior: instant ? "auto" : "smooth" });
+  pager.scrollTo({ left: TAB_ORDER.indexOf(name) * pagerStep(), behavior: instant ? "auto" : "smooth" });
+  setActive(name);
+}
+function onPagerScroll() {
+  const f = Math.min(TAB_ORDER.length - 1, Math.max(0, pager.scrollLeft / pagerStep())), a = Math.floor(f), b = Math.min(TAB_ORDER.length - 1, Math.ceil(f)), t = f - a;
+  const ha = panes[a].offsetHeight, hb = panes[b].offsetHeight;
+  pager.style.height = Math.max(120, ha + (hb - ha) * t) + "px"; // l'altezza segue le due schermate visibili
+  setActive(TAB_ORDER[Math.round(f)]);
+}
+pager.addEventListener("scroll", onPagerScroll, { passive: true });
+if (window.ResizeObserver) { const ro = new ResizeObserver(() => onPagerScroll()); panes.forEach((p) => ro.observe(p)); }
+window.addEventListener("resize", () => { pager.scrollTo({ left: TAB_ORDER.indexOf(S.tab) * pagerStep(), behavior: "auto" }); onPagerScroll(); });
+$("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) goTab(b.dataset.tab); };
 $("#refresh").onclick = () => load();
 $$("[data-open]").forEach((b) => (b.onclick = () => $(`#tabs [data-tab=${b.dataset.open}]`).click()));
-$("#moreBtn").onclick = () => { const d = $("#moreBox"); d.open = !d.open; d.scrollIntoView({ behavior: "smooth", block: "center" }); };
 $("#symbol").onchange = () => { S.symbol = $("#symbol").value.trim().toUpperCase() || "XAUUSD"; S.ov = null; S.setup = "breakout"; load(); };
 $("#spot").onchange = () => { S.spot = $("#spot").value.replace(",", ".").trim(); load(); };
 ["#pN", "#pAm", "#pHold", "#pOr", "#pRep"].forEach((id) => ($(id).onchange = () => load()));
@@ -116,7 +134,7 @@ window.addEventListener("resize", () => { renderChart(); renderTm(); loadJournal
 function render() {
   const ov = S.ov, d = S.data;
   if (!ov || !d) return;
-  $("#hName").textContent = ov.name + (S.spot ? " · prezzo sul tuo grafico" : " · dati " + ov.ysym);
+  $("#hName").textContent = ov.name + (S.spot ? " · prezzo sul tuo grafico" : "");
   $("#hPrice").textContent = fmt(P(ov.info.last));
   const ch = ov.info.change_pct, c = $("#hChange");
   c.textContent = (ch >= 0 ? "▲ " : "▼ ") + Math.abs(ch).toFixed(2).replace(".", ",") + "% oggi"; c.className = "delta " + (ch >= 0 ? "up" : "down");
@@ -124,6 +142,7 @@ function render() {
   $("#hRead").textContent = ov.reading || "";
   if (ov.info.gap_warning) showMsg("Scarto insolito tra il prezzo che hai scritto e i dati di Yahoo: i livelli spostati sul tuo grafico potrebbero non essere affidabili. Controlla prezzo e simbolo.");
   renderDirCards(); renderExplain(); renderMtf(); renderChart(); renderTm();
+  onPagerScroll();
 }
 
 function stateLabel(r) {
@@ -187,6 +206,7 @@ function setupCanvas(cv) {
   cv.width = w * dpr; cv.height = h * dpr;
   const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
   c.font = "11px -apple-system,Segoe UI,Roboto,sans-serif";
+  const kk = { cvCandles: "candles", cvFan: "fan", cvCases: "cases" }[cv.id]; if (kk && TA[kk]) TA[kk]();
   return { c, w, h };
 }
 function niceTicks(lo, hi, n) {
@@ -196,6 +216,7 @@ function niceTicks(lo, hi, n) {
 }
 /* ---------- zoom e spostamento dei grafici ---------- */
 S.zdom = {}; // per ogni grafico: dominio dei dati e margini (aggiornato a ogni disegno)
+const TA = {}; // funzioni che aggiornano il touch-action di ogni grafico
 const ZOOM = {}; // per ogni grafico: { span: ampiezza visibile, right: quanto resta nascosto a destra }
 const MINSPAN = { candles: 8, fan: 4, cases: 4 };
 function zView(k, dmin, dmax, defSpan) {
@@ -206,6 +227,8 @@ function zView(k, dmin, dmax, defSpan) {
 }
 function attachZoom(cv, k, dom, redraw) {
   const pts = new Map();
+  const ta = () => { const d = dom(), v = zView(k, d.dmin, d.dmax, d.defSpan); cv.style.touchAction = v.span < v.full - 1e-6 ? "pan-y" : "pan-x pan-y"; };
+  TA[k] = ta;
   const cur = () => { const d = dom(); return { d, v: zView(k, d.dmin, d.dmax, d.defSpan) }; };
   const apply = (span, frac, anchor) => {
     const d = dom(), full = d.dmax - d.dmin;
@@ -213,7 +236,7 @@ function attachZoom(cv, k, dom, redraw) {
     let lo = anchor - frac * span, hi = lo + span;
     if (hi > d.dmax) { hi = d.dmax; lo = hi - span; }
     if (lo < d.dmin) { lo = d.dmin; hi = lo + span; }
-    ZOOM[k] = { span, right: d.dmax - hi }; redraw();
+    ZOOM[k] = { span, right: d.dmax - hi }; redraw(); ta();
   };
   const fracOf = (clientX) => { const { d } = cur(), r = cv.getBoundingClientRect(); return Math.min(1, Math.max(0, (clientX - r.left - d.ml) / Math.max(1, r.width - d.ml - d.mr))); };
   cv.addEventListener("wheel", (e) => { e.preventDefault(); const { v } = cur(), f = fracOf(e.clientX); apply(v.span * (e.deltaY > 0 ? 1.18 : 1 / 1.18), f, v.lo + f * v.span); }, { passive: false });
@@ -249,7 +272,7 @@ function initZoom() {
 }
 
 function renderChart() {
-  if (S.tab !== "grafico" || !S.data) return;
+  if (!S.data) return;
   const cv = $("#cvCandles"), k = setupCanvas(cv); if (!k) return;
   const { c, w, h } = k, ch = S.data.chart, bars = ch.bars, n = bars.length;
   $("#chartTitle").textContent = S.ov.name + " · " + S.tf;
@@ -289,7 +312,7 @@ function renderChart() {
   c.textAlign = "left";
   levels.forEach((l) => { c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(l.label, w - mr + 4, Y(l.y) + 3.5); });
   c.font = "11px sans-serif"; c.fillStyle = css("--muted"); c.textAlign = "center";
-  const every = Math.max(1, Math.ceil(V.span / 6));
+  const every = Math.max(1, Math.ceil(V.span / Math.max(2, Math.floor(pw / (ch.sec >= 3600 ? 105 : 70)))));
   for (let i = Math.ceil(V.lo); i < Math.min(n, Math.floor(V.hi)); i++) {
     if (i % every !== 0) continue; const t = bars[i][0];
     c.fillText(ch.sec >= 86400 ? dIT(t) : ch.sec >= 3600 ? tIT(t) + " " + dIT(t) : tIT(t), Math.min(Math.max(X(i), ml + 24), w - mr - 24), h - 6);
@@ -307,7 +330,7 @@ function drawAxesR(c, w, h, lo, ymin, ymax, ml, mr, mt, mb, rr, hi) {
 }
 
 function renderTm() {
-  if (S.tab !== "tm" || !S.data) return;
+  if (!S.data) return;
   const res = S.data.result; if (!res || !res.dirs) return;
   const r = res.dirs[S.dir], b = r.blocks[key(S.rr)];
   let st = "";
@@ -455,6 +478,105 @@ async function initClaude() {
 initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAlertUi(); initClaude();
 load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 90000);
+
+/* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
+const OPP_TFS = ["5m", "15m", "1h", "4h", "1d", "1w"];
+let oppRunning = false;
+function closeOpp() { $("#oppSheet").hidden = true; document.body.style.overflow = ""; }
+function applyOpp(c) {
+  S.setup = c.setup; S.tf = c.tf; S.rr = c.rr; S.dir = c.dir; S.selCase = null;
+  buildTf(); buildSetupSeg(); buildRr(); buildDirSegs(); closeOpp();
+  $("#tabs [data-tab=oggi]").click(); load();
+}
+function oppCandidates(results) {
+  const best = {};
+  results.forEach((res) => {
+    const R = res && res.result;
+    if (!R || R.error || !R.dirs) return;
+    ["buy", "sell"].forEach((d) => {
+      const r = R.dirs[d];
+      if (!r || !["waiting", "triggered"].includes(r.state)) return;
+      const fresh = r.state === "triggered" && (res.setup === "breakout" ? (r.age_bars ?? 99) <= 2 : (r.age_min ?? 999) <= 30);
+      RRS.forEach((rr) => {
+        const b = r.blocks[key(rr)];
+        if (!b || b.closed || !b.mc || !b.hist) return;
+        const exp = Math.min(b.mc.avg_r, b.hist.fired >= 10 ? b.hist.avg_r : -9);
+        const c = { setup: res.setup, tf: res.tf, label: R.label, dir: d, rr, state: r.state, fresh, late: r.state === "triggered" && !fresh,
+          entry: r.entry, stop: r.stop, target: b.target, dist: r.dist, risk: r.risk, age_min: r.age_min, mc: b.mc, hist: b.hist, stance: b.stance, exp, mine: rr === S.rr };
+        const k = res.setup + "|" + res.tf + "|" + d, old = best[k];
+        const rank = (x) => (x.stance === "favorevole" ? 1000 : 0) + x.exp * 100 + (x.mine ? 3 : 0);
+        if (!old || rank(c) > rank(old)) best[k] = c;
+      });
+    });
+  });
+  return Object.values(best);
+}
+function oppRow(c) {
+  const dn = c.dir === "buy" ? "BUY" : "SHORT", where = c.state === "waiting"
+    ? `Scatta se una barra ${c.setup === "breakout" ? c.tf : ""} chiude ${c.dir === "buy" ? "sopra" : "sotto"} <b>${fp(c.entry)}</b> · prezzo a ${fmt(c.dist)} dal livello`
+    : `Scattato ${c.age_min < 180 ? c.age_min + " min" : (c.age_min / 60).toFixed(1).replace(".", ",") + " h"} fa a <b>${fp(c.entry)}</b>${c.late ? " (ingresso in ritardo: è un altro trade)" : ""}`;
+  const h = c.hist, se = h.se != null ? " ±" + h.se.toFixed(2).replace(".", ",") : "";
+  return `<div class="opp"><div class="opp-top"><span class="dir ${c.dir}">${dn}</span><b>${c.label.replace(/^Breakout \d+ barre \(/, "Breakout (").replace("(", "· ").replace(")", "")}</b><span class="pill">${c.rr}R</span>${c.mine ? '<span class="pill amber">il tuo target</span>' : ""}${stancePill(c.stance)}</div>
+    <div class="muted small">${where}</div>
+    <div class="levels"><div class="lv"><span>Stop</span><b>${fp(c.stop)}</b></div><div class="lv"><span>Target ${c.rr}R</span><b>${fp(c.target)}</b></div><div class="lv"><span>Rischio</span><b>${fmt(c.risk)}</b></div></div>
+    <div class="muted small">Simulazione: target ${pct(c.mc.target)} · stop ${pct(c.mc.stop)} · storico ${h.fired} casi, R medio ${sgn(h.avg_r)}${se}</div>
+    <button class="btn" data-opp="${c.setup}|${c.tf}|${c.dir}|${c.rr}">Apri questa analisi</button></div>`;
+}
+function renderOpp(results, total) {
+  const cands = oppCandidates(results), fav = cands.filter((c) => c.stance === "favorevole");
+  const now = fav.filter((c) => c.fresh).sort((a, b) => b.exp - a.exp);
+  const next = fav.filter((c) => c.state === "waiting").sort((a, b) => (a.dist / a.risk) - (b.dist / b.risk) || b.exp - a.exp);
+  const late = fav.filter((c) => c.late).sort((a, b) => b.exp - a.exp);
+  let h = `<p class="muted small">Analizzati ${results.length} su ${total} gruppi (time frame × setup), ognuno con i target ${RRS.map((r) => r + "R").join(", ")}, per buy e short. Nell'elenco c'è, per ogni gruppo, il target che conviene di più; il tuo (${S.rr}R) è evidenziato quando è tra i migliori.</p>`;
+  const sec = (title, arr, note) => (arr.length ? `<h4>${title}</h4>${note ? `<p class="muted small">${note}</p>` : ""}${arr.slice(0, 6).map(oppRow).join("")}` : "");
+  if (!fav.length) {
+    const near = cands.filter((c) => c.stance !== "sfavorevole").sort((a, b) => b.exp - a.exp).slice(0, 3);
+    h += `<div class="opp-none"><b>Adesso nessun vantaggio dimostrato</b><br>Su nessun time frame, setup o target la simulazione e lo storico vanno d'accordo nel dare un vantaggio. Il meglio che c'è è "nessun vantaggio": non è un motivo per entrare. Meglio aspettare.</div>`;
+    if (near.length) h += `<h4>I più vicini (non sufficienti)</h4>${near.map(oppRow).join("")}`;
+  } else {
+    const top = now[0] || next[0] || late[0], dn = top.dir === "buy" ? "BUY" : "SHORT";
+    h += `<div class="opp-sum"><b>${now.length ? "C'è un segnale favorevole adesso" : next.length ? "Il prossimo vantaggio" : "Vantaggio già scattato da tempo"}:</b> ${dn} · ${top.label.replace(/^Breakout \d+ barre \(/, "Breakout (").replace("(", "· ").replace(")", "")} · target ${top.rr}R.</div>`;
+    h += sec("Da valutare adesso", now, "Segnali favorevoli scattati da poco.");
+    h += sec("Prossimi vantaggi (in attesa del livello)", next, "Ordinati dal più vicino al livello di ingresso.");
+    h += sec("Già scattati da tempo", late, "Solo informativi: entrare adesso sarebbe un altro trade.");
+  }
+  h += `<p class="muted small">"Favorevole" vuol dire che la simulazione e lo storico reale sono d'accordo, con almeno 10 casi. Non è una previsione né consulenza finanziaria.</p>`;
+  $("#oppBody").innerHTML = h;
+  $$("#oppBody [data-opp]").forEach((b) => (b.onclick = () => {
+    const [setup, tf, dir, rr] = b.dataset.opp.split("|");
+    applyOpp({ setup, tf, dir, rr: +rr });
+  }));
+}
+async function openOpp() {
+  $("#oppSheet").hidden = false; document.body.style.overflow = "hidden";
+  if (oppRunning) return;
+  oppRunning = true;
+  const sess = Object.keys((S.ov && S.ov.sessions) || { london: 1, ny: 1 }), combos = [];
+  OPP_TFS.forEach((tf) => combos.push({ setup: "breakout", tf }));
+  sess.forEach((k) => ["5m", "15m"].forEach((tf) => combos.push({ setup: k, tf })));
+  $("#oppBody").innerHTML = ""; $("#oppProg").style.width = "3%"; $("#oppSub").textContent = "Analizzo tutti i time frame, i setup e i target… 3%";
+  const results = []; let done = 0, next = 0;
+  const worker = async () => {
+    while (next < combos.length) {
+      const c = combos[next++];
+      try {
+        const r = await api("/api/setup?" + baseQuery({ tf: c.tf, setup: c.setup, replays: 3000, lite: 1 }));
+        results.push({ setup: c.setup, tf: c.tf, result: r.result });
+      } catch (e) { /* un gruppo che fallisce non blocca gli altri */ }
+      done++; const p = Math.max(3, Math.round((done / combos.length) * 100));
+      $("#oppProg").style.width = p + "%"; $("#oppSub").textContent = `Analizzo tutti i time frame, i setup e i target… ${p}% (${done}/${combos.length})`;
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  oppRunning = false;
+  $("#oppSub").textContent = "Fatto. " + (S.ov ? S.ov.name : "") + ", ora.";
+  setTimeout(() => ($("#oppProg").style.width = "0%"), 600);
+  renderOpp(results, combos.length);
+}
+$$("[data-oppopen]").forEach((b) => (b.onclick = () => openOpp()));
+$("#oppClose").onclick = closeOpp;
+$("#oppSheet").onclick = (e) => { if (e.target.id === "oppSheet") closeOpp(); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#oppSheet").hidden) closeOpp(); });
 
 /* ---------- app installabile ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* senza service worker funziona uguale */ });

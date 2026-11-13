@@ -185,6 +185,12 @@ def api_setup(q):
         bars, st = build_setup(ys, now_u, tf, setup, rrs, q, True, bounded(q, "replays", 10000, 1000, 20000, int))
         SETUP_CACHE[ck] = (time.time(), bars, st)
     info = E.price_info(ys, now_ts, num(q, "spot", None))
+    if q.get("lite", [""])[0] == "1":  # scansione "Opportunità": solo i numeri, senza grafico, casistiche e ventaglio
+        slim = st
+        if isinstance(st, dict) and "dirs" in st:
+            slim = dict(st)
+            slim["dirs"] = {d: {k: x for k, x in r.items() if k not in ("cases", "fan")} for d, r in st["dirs"].items()}
+        return {"symbol": sym.upper(), "tf": tf, "setup": setup, "rr": rr, "result": slim, "info": info}
     closes = [b[E.C] for b in bars]
     s20, s50 = E.sma_list(closes, 20), E.sma_list(closes, 50)
     cut = max(0, len(bars) - 400)

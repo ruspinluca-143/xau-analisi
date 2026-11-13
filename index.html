@@ -31,12 +31,12 @@
     <div class="hero-label" id="hName">Oro (XAUUSD)</div>
     <div class="hero-price" id="hPrice">–</div>
     <div class="hero-sub"><span id="hChange" class="delta">–</span><span id="hUpd" class="muted"></span></div>
-    <label class="spot"><span>Prezzo su MT5</span><input id="spot" inputmode="decimal" placeholder="es. 3867" autocomplete="off"></label>
+    <label class="spot" title="I dati possono differire di qualche dollaro dal tuo grafico: scrivi qui il prezzo che vedi su MT5 e sposto i livelli."><span>Prezzo su MT5</span><input id="spot" inputmode="decimal" placeholder="es. 3867" autocomplete="off"></label>
     <div class="actions">
       <button class="act" data-open="grafico"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></span>Grafico</button>
       <button class="act" data-open="tm"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span>Time Machine</button>
       <button class="act" data-open="avvisi"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg></span>Avvisi</button>
-      <button class="act" id="moreBtn"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></svg></span>Altro</button>
+      <button class="act" data-oppopen="1"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.7L12 17l-1.9-5.3L4.5 10l5.6-1.6z"/><path d="M18 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>Opportunità</button>
     </div>
     <div class="hero-read" id="hRead">Carico i dati…</div>
   </section>
@@ -45,19 +45,19 @@
     <div class="ctl"><span class="ctl-label">Time frame</span><div class="seg" id="tfSeg"></div></div>
     <div class="ctl"><span class="ctl-label">Setup</span><div class="seg" id="setupSeg"></div></div>
     <div class="ctl"><span class="ctl-label">Target</span><div class="seg" id="rrSeg"></div></div>
-    <details class="ctl-more" id="moreBox"><summary>Altre impostazioni</summary>
-      <div class="params">
+    <button class="btn opp-btn" data-oppopen="1">✦ Opportunità: dove c'è un vantaggio adesso</button>
+    <div class="params" hidden>
         <label>Barre del breakout<input id="pN" type="number" value="20" min="5" max="100"></label>
         <label>Stop in ATR<input id="pAm" type="number" value="1" step="0.25" min="0.25"></label>
         <label>Durata (barre)<input id="pHold" type="number" placeholder="auto" min="2"></label>
         <label>Range apertura (min)<input id="pOr" type="number" value="15" step="5" min="5"></label>
         <label>Simulazioni<input id="pRep" type="number" value="10000" step="1000" min="1000" max="20000"></label>
       </div>
-    </details>
   </section>
 
   <div id="msg" class="notice" hidden></div>
 
+  <div class="pager" id="pager">
   <!-- OGGI -->
   <section class="tab on" id="tab-oggi">
     <div class="grid2">
@@ -125,7 +125,9 @@
     </div>
   </section>
 
-  <footer class="foot muted small">Solo analisi: nessun broker, nessun ordine. Dati gratuiti e non ufficiali di Yahoo (per l'oro il future GC=F, non lo spot). Non è consulenza finanziaria.</footer>
+  </div>
+
+  <footer class="foot muted small">Solo analisi: nessun broker, nessun ordine. Dati gratuiti e non ufficiali, con possibile ritardo. Non è consulenza finanziaria.</footer>
 </main>
 
 <nav class="bottom" id="tabs">
@@ -134,6 +136,14 @@
   <button data-tab="tm"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>Time Machine</button>
   <button data-tab="avvisi"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>Avvisi</button>
 </nav>
+<div class="sheet" id="oppSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><h3>Opportunità</h3><button class="round" id="oppClose" title="Chiudi">✕</button></div>
+    <p class="muted small" id="oppSub"></p>
+    <div class="oppbar"><i id="oppProg"></i></div>
+    <div id="oppBody"></div>
+  </div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>
