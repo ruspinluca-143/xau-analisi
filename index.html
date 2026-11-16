@@ -78,7 +78,7 @@
   <!-- GRAFICO -->
   <section class="tab" id="tab-grafico">
     <div class="card">
-      <div class="row between"><h3 id="chartTitle">Grafico</h3><div class="row gap"><div class="seg small" id="axisSeg1"></div><div class="seg small" id="dirSeg1"></div></div></div>
+      <div class="row between segbar"><h3 id="chartTitle">Grafico</h3><div class="row gap"><div class="seg small" id="axisSeg1"></div><div class="seg small" id="dirSeg1"></div></div></div>
       <canvas id="cvCandles" class="cv tall"></canvas>
       <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta. Zoom: rotellina del mouse o pizzico con due dita; trascina per spostarti; doppio tocco o ⟲ per ripristinare; + e − per ingrandire o rimpicciolire.</p>
     </div>
@@ -87,7 +87,7 @@
   <!-- TIME MACHINE -->
   <section class="tab" id="tab-tm">
     <div class="card">
-      <div class="row between"><h3>Time Machine</h3><div class="row gap"><div class="seg small" id="axisSeg2"></div><div class="seg small" id="dirSeg2"></div></div></div>
+      <div class="row between segbar"><h3>Time Machine</h3><div class="row gap"><div class="seg small" id="axisSeg2"></div><div class="seg small" id="dirSeg2"></div></div></div>
       <div id="tmStats" class="statrow"></div>
       <h4>Le 10.000 ripetizioni da adesso</h4>
       <canvas id="cvFan" class="cv small"></canvas>
@@ -127,7 +127,7 @@
       <p class="muted small" id="autoNote">Prezzi dei dati (possono differire di qualche dollaro dal tuo grafico). R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop). Si aggiorna ogni pochi minuti.</p>
     </div>
     <div class="card">
-      <h3>Report dei segnali</h3>
+      <h3>Report dei segnali favorevoli</h3>
       <div id="jStats" class="statrow"></div>
       <canvas id="cvEq" class="cv short"></canvas>
       <div id="jStance" class="statrow"></div>

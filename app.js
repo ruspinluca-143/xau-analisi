@@ -484,7 +484,9 @@ const saveLocalJournal = (items) => localStorage.setItem("xau_journal", JSON.str
 async function loadJournal() {
   try {
     JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: loadLocalJournal() }) });
-    saveLocalJournal(JD.items);
+    saveLocalJournal(JD.items); // il diario locale tiene tutto (anche i non favorevoli) per aggiornarne gli esiti
+    // ma il report mostra e conta solo i segnali favorevoli
+    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole") }) });
   } catch (e) { return; }
   const s = JD.stats || { n: 0 };
   $("#jStats").innerHTML = s.n ? `<div class="stat"><span>Segnali chiusi</span><b>${s.n}</b></div><div class="stat"><span>Target</span><b class="g">${s.target}</b></div><div class="stat"><span>Stop</span><b class="r">${s.stop}</b></div><div class="stat"><span>Win rate</span><b>${pct(s.win_rate)}</b></div><div class="stat"><span>R totale</span><b class="${s.total_r >= 0 ? "g" : "r"}">${sgn(s.total_r)}</b></div><div class="stat"><span>Ancora aperti</span><b>${JD.open}</b></div>` : `<p class="muted">Ancora nessun segnale chiuso. Attiva gli avvisi: ogni segnale che l'app vede viene salvato qui e seguito fino all'esito.</p>`;
