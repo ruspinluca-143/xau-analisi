@@ -489,7 +489,7 @@ async function loadJournal() {
   const s = JD.stats || { n: 0 };
   $("#jStats").innerHTML = s.n ? `<div class="stat"><span>Segnali chiusi</span><b>${s.n}</b></div><div class="stat"><span>Target</span><b class="g">${s.target}</b></div><div class="stat"><span>Stop</span><b class="r">${s.stop}</b></div><div class="stat"><span>Win rate</span><b>${pct(s.win_rate)}</b></div><div class="stat"><span>R totale</span><b class="${s.total_r >= 0 ? "g" : "r"}">${sgn(s.total_r)}</b></div><div class="stat"><span>Ancora aperti</span><b>${JD.open}</b></div>` : `<p class="muted">Ancora nessun segnale chiuso. Attiva gli avvisi: ogni segnale che l'app vede viene salvato qui e seguito fino all'esito.</p>`;
   $("#jStance").innerHTML = Object.entries(JD.by_stance || {}).map(([k, v]) => `<div class="stat"><span>Giudizio: ${(STANCE[k] || [k])[0]}</span><b style="font-size:15px">${v.n} segnali · R medio ${sgn(v.avg_r)}</b></div>`).join("");
-  $("#jTable").innerHTML = JD.items.length ? `<table><tr><th>Quando</th><th>Segnale</th><th>Ingresso</th><th>Stop</th><th>Target</th><th>Giudizio</th><th>Esito</th></tr>${JD.items.slice(0, 60).map((x) => `<tr><td class="l">${tIT(x.entry_ts, true)}</td><td class="l"><b class="${x.dir === "buy" ? "dir buy" : "dir sell"}" style="font-size:13px">${x.dir === "buy" ? "BUY" : "SHORT"}</b> ${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</td><td>${fmt(x.entry)}</td><td>${fmt(x.stop)}</td><td>${x.rr}R ${fmt(x.target)}</td><td>${stancePill(x.stance)}</td><td>${x.status === "open" ? '<span class="pill amber">aperto</span>' : `<span class="pill ${x.status === "target" ? "green" : x.status === "stop" ? "red" : ""}">${x.status === "target" ? "target" : x.status === "stop" ? "stop" : "chiuso"} ${sgn(x.r)}R</span>`}</td></tr>`).join("")}</table>` : "";
+  $("#jTable").innerHTML = JD.items.length ? sigRows(JD.items.slice(0, 60)) : "";
   loadJournalChart();
 }
 function loadJournalChart() {
@@ -634,6 +634,20 @@ function autoStats(sub) {
   const w = sub.filter((x) => x.status === "target").length, l = sub.filter((x) => x.status === "stop").length;
   return { n, w, l, none: n - w - l, win: w / n, avg: sub.reduce((a, x) => a + x.r, 0) / n, tot: sub.reduce((a, x) => a + x.r, 0) };
 }
+function outPill(x) {
+  if (x.status === "open") return '<span class="pill amber">aperto</span>';
+  if (x.status === "nd") return '<span class="pill">n.d.</span>';
+  const w = x.status === "target" ? "target" : x.status === "stop" ? "stop" : "chiuso";
+  return `<span class="pill ${x.status === "target" ? "green" : x.status === "stop" ? "red" : ""}">${w} ${sgn(x.r)}R</span>`;
+}
+/* elenco dei segnali: ogni segnale è un blocco che sta tutto nella larghezza dello schermo (niente scorrimento laterale) */
+function sigRows(items) {
+  return items.map((x) => `<div class="sigrow">
+    <div class="sr1"><b class="dir ${x.dir === "buy" ? "buy" : "sell"}">${x.dir === "buy" ? "BUY" : "SHORT"}</b> <span>${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</span><span class="when">${tIT(x.entry_ts, true)}</span></div>
+    <div class="sr2"><span>Ingresso <b>${fmt(x.entry)}</b></span><span>Stop <b>${fmt(x.stop)}</b></span><span>Target ${x.rr}R <b>${fmt(x.target)}</b></span></div>
+    <div class="sr3">${stancePill(x.stance)}${outPill(x)}</div>
+  </div>`).join("");
+}
 function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
@@ -645,7 +659,7 @@ function renderAuto() {
   const groups = {}; closed.forEach((x) => (groups[x.stance] = groups[x.stance] || []).push(x));
   $("#autoStance").innerHTML = Object.entries(groups).map(([k, v]) => { const s = autoStats(v); return `<div class="stat"><span>Giudizio: ${(STANCE[k] || [k])[0]}</span><b style="font-size:15px">${s.n} segnali · R medio ${sgn(s.avg)}</b></div>`; }).join("");
   const rows = AUTO.slice().sort((a, b) => b.entry_ts - a.entry_ts).slice(0, 40);
-  tb.innerHTML = `<table><tr><th>Quando</th><th>Segnale</th><th>Ingresso</th><th>Stop</th><th>Target</th><th>Giudizio</th><th>Esito</th></tr>${rows.map((x) => `<tr><td class="l">${tIT(x.entry_ts, true)}</td><td class="l"><b class="dir ${x.dir}" style="font-size:13px">${x.dir === "buy" ? "BUY" : "SHORT"}</b> ${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</td><td>${fmt(x.entry)}</td><td>${fmt(x.stop)}</td><td>${x.rr}R ${fmt(x.target)}</td><td>${stancePill(x.stance)}</td><td>${x.status === "open" ? '<span class="pill amber">aperto</span>' : x.status === "nd" ? '<span class="pill">n.d.</span>' : `<span class="pill ${x.status === "target" ? "green" : x.status === "stop" ? "red" : ""}">${x.status === "target" ? "target" : x.status === "stop" ? "stop" : "chiuso"} ${sgn(x.r)}R</span>`}</td></tr>`).join("")}</table>`;
+  tb.innerHTML = sigRows(rows);
   const eq = []; let run = 0;
   fav.slice().sort((a, b) => (a.exit_ts || a.entry_ts) - (b.exit_ts || b.entry_ts)).forEach((x) => { run += x.r; eq.push([x.exit_ts || x.entry_ts, run]); });
   drawAutoEq(eq);
