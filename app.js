@@ -102,7 +102,7 @@ function buildDirSegs() {
   ["#dirSeg1", "#dirSeg2"].forEach((id) => seg($(id), [{ label: "BUY", value: "buy" }, { label: "SHORT", value: "sell" }], S.dir, (v) => { S.dir = v; buildDirSegs(); renderChart(); renderTm(); }));
 }
 /* ---------- schermate: scorrimento fluido da una all'altra ---------- */
-const TAB_ORDER = ["oggi", "grafico", "tm", "avvisi"];
+const TAB_ORDER = ["oggi", "grafico", "tm", "avvisi", "op"];
 const pager = $("#pager"), panes = TAB_ORDER.map((t) => $("#tab-" + t));
 const pagerStep = () => pager.clientWidth + 16;
 let heavyTimer = 0;

@@ -181,3 +181,13 @@ button:active{transform:scale(.96);opacity:.85}
 .sr2{display:flex;flex-wrap:wrap;gap:4px 14px;margin:5px 0;font-size:12.5px;color:var(--muted)}
 .sr2 b{color:var(--ink);font-weight:700}
 .sr3{display:flex;flex-wrap:wrap;gap:6px}
+
+/* le mie operazioni */
+#tab-op select{background:var(--soft);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:13px;font-weight:600;max-width:100%;flex:1;min-width:0}
+#tab-op textarea{width:100%;box-sizing:border-box;margin:8px 0;background:var(--soft);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px;font-size:12px}
+#tab-op .stat{min-width:0;flex:1 1 30%;padding:8px 10px}
+#tab-op .stat b{font-size:15px}
+#tab-op h3{margin:0 0 6px;font-size:16px}
+#tab-op .card>p.small{font-size:11.5px;line-height:1.4}
+#tab-op .sr1 .when.g{color:var(--green)}#tab-op .sr1 .when.r{color:var(--red)}
+.bottom button{font-size:10.5px;padding:6px 2px}

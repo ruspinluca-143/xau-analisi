@@ -136,6 +136,30 @@
     </div>
   </section>
 
+  <section class="tab" id="tab-op">
+    <div class="card">
+      <h3>Le mie operazioni (MetaTrader 5)</h3>
+      <p class="muted small">Carica il rapporto di MT5 (Cronologia → tasto destro → Rapporto → HTML o CSV) ogni settimana o mese: le operazioni già caricate non si duplicano. Periodi dal 9 all'8 del mese dopo. <b>I dati restano solo su questo telefono</b>: non vanno mai sul sito.</p>
+      <div class="row gap"><label class="btn primary" for="opFile" style="cursor:pointer">Carica file</label><input type="file" id="opFile" accept=".html,.htm,.csv,.tsv,.txt" multiple hidden><button class="btn" id="opPasteBtn">Incolla testo</button></div>
+      <div id="opPasteBox" hidden><textarea id="opText" rows="5" placeholder="Incolla qui le righe copiate da MT5 (con l'intestazione delle colonne)"></textarea><button class="btn primary" id="opImport">Importa</button></div>
+      <p class="small" id="opMsg"></p>
+      <p class="muted" id="opEmpty">Ancora nessuna operazione caricata.</p>
+    </div>
+    <div id="opData" hidden>
+      <div class="card">
+        <div class="row gap"><select id="opPeriod"></select><select id="opSym"></select></div>
+        <div id="opStats" class="statrow" style="margin-top:10px"></div>
+      </div>
+      <div class="card"><h3>Andamento del periodo</h3><canvas id="cvOpEq" class="cv short"></canvas></div>
+      <div class="card"><h3>Risultato per giorno</h3><canvas id="cvOpDay" class="cv short"></canvas></div>
+      <div class="card"><h3>BUY e SHORT</h3><div id="opDir"></div></div>
+      <div class="card"><h3>Per giorno della settimana</h3><canvas id="cvOpWd" class="cv short"></canvas><h3 style="margin-top:14px">Per ora di apertura</h3><canvas id="cvOpHr" class="cv short"></canvas><p class="muted small">Orario del server del tuo broker, come nel rapporto.</p></div>
+      <div class="card"><h3>Confronto tra periodi</h3><canvas id="cvOpPer" class="cv short"></canvas><div id="opPeriods"></div></div>
+      <div class="card"><h3>Ultime operazioni</h3><div id="opList"></div>
+        <div class="row gap" style="margin-top:10px"><button class="btn" id="opExport">Esporta CSV</button><button class="btn" id="opClear">Cancella dati</button></div></div>
+    </div>
+  </section>
+
   </div>
 
   <footer class="foot muted small">Solo analisi: nessun broker, nessun ordine. Dati gratuiti e non ufficiali, con possibile ritardo. Non è consulenza finanziaria.</footer>
@@ -146,6 +170,7 @@
   <button data-tab="grafico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>Grafico</button>
   <button data-tab="tm"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>Time Machine</button>
   <button data-tab="avvisi"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>Avvisi</button>
+  <button data-tab="op"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Operazioni</button>
 </nav>
 <div class="sheet" id="oppSheet" hidden>
   <div class="sheet-card">
@@ -156,5 +181,6 @@
   </div>
 </div>
 <script src="app.js"></script>
+<script src="trades.js"></script>
 </body>
 </html>
