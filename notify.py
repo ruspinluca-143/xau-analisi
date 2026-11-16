@@ -26,9 +26,9 @@ TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 LOG_FILE = os.environ.get("LOG_FILE", "log.json")
 DRY = "--dry" in sys.argv
 TEST = "--test" in sys.argv
-HOLD = {"5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
-BREAKOUT_TFS = ("5m", "15m", "30m", "1h", "4h", "1d", "1w")
-SESSION_TFS = ("5m", "15m")
+HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
+BREAKOUT_TFS = ("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w")
+SESSION_TFS = ("1m", "5m", "15m")
 REPLAYS = 3000
 KEEP_DAYS = 90
 
@@ -94,12 +94,14 @@ def candidates(ys, now_u):
             fresh = r.get("age_bars", 99) <= 2 if setup == "breakout" else r.get("age_min", 999) <= 30
             if not fresh:
                 continue
-            best = None
+            best, favs = None, []
             for rr in rrs:
                 b = r["blocks"].get("%g" % rr)
                 if not b or b["closed"] or not b.get("mc"):
                     continue
                 h = b["hist"]
+                if b["stance"] == "favorevole":
+                    favs.append([rr, b["target"]])
                 exp = min(b["mc"]["avg_r"], h["avg_r"] if h["fired"] >= 10 else -9)
                 if best is None or (b["stance"] == "favorevole", exp) > (best[2]["stance"] == "favorevole", best[0]):
                     best = (exp, rr, b)
@@ -110,7 +112,7 @@ def candidates(ys, now_u):
                             "label": st["label"], "dir": d, "rr": rr, "entry": r["entry"], "stop": r["stop"], "target": b["target"],
                             "entry_ts": r["trigger_ts"] - sec, "hold": hold, "stance": b["stance"],
                             "sim_target": round(b["mc"]["target"], 3), "sim_stop": round(b["mc"]["stop"], 3),
-                            "hist_n": b["hist"]["fired"], "hist_r": round(b["hist"]["avg_r"], 3), "age_min": r.get("age_min", 0)})
+                            "hist_n": b["hist"]["fired"], "hist_r": round(b["hist"]["avg_r"], 3), "age_min": r.get("age_min", 0), "favs": favs})
     return out
 
 
@@ -121,12 +123,19 @@ def title_of(c, prefix=""):
     return t.encode("ascii", "ignore").decode("ascii")
 
 
+def favs_line(c):
+    f = c.get("favs") or []
+    if len(f) < 2:
+        return ""
+    return "Target favorevoli: " + " - ".join("%gR a %s" % (rr, fmt(t)) for rr, t in f) + ".\n"
+
+
 def message(c):
     body = ("Segnale favorevole scattato %d min fa (alle %s ora italiana).\nIngresso %s - Stop %s - Target %s\n"
             "Simulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %s.\n"
-            "I prezzi sono quelli dei dati: confrontali col tuo grafico. Solo analisi, decidi tu."
+            "%sI prezzi sono quelli dei dati: confrontali col tuo grafico. Solo analisi, decidi tu."
             % (c["age_min"], E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]),
-               c["sim_target"] * 100, c["sim_stop"] * 100, c["hist_n"], sgn(c["hist_r"])))
+               c["sim_target"] * 100, c["sim_stop"] * 100, c["hist_n"], sgn(c["hist_r"]), favs_line(c)))
     return title_of(c), body
 
 
@@ -177,6 +186,13 @@ def resolve(items, ys, now_ts):
 
 
 def main():
+    return run()
+
+
+def run(topic=None):
+    global TOPIC
+    if topic is not None:
+        TOPIC = topic
     now_u = E.now_utc()
     now_ts = E.epoch(now_u)
     ys = E.yahoo_symbol(SYMBOL)

@@ -163,3 +163,11 @@ button:active{transform:scale(.96);opacity:.85}
 .seg button{min-height:38px}
 .pager{scroll-behavior:auto}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* schermata Avvisi compatta */
+#tab-avvisi .alertgrid{gap:8px;margin:8px 0;grid-template-columns:1fr}
+#tab-avvisi .ctl-label{font-size:11px;margin:0}
+#tab-avvisi .chips{gap:4px;margin-top:3px}
+#tab-avvisi .chip span{padding:4px 9px;font-size:11.5px}
+#tab-avvisi .card>p.small,#tab-avvisi #alDiag{font-size:11px;line-height:1.35;margin:4px 0}
+#tab-avvisi .btn{padding:7px 12px;font-size:12.5px}
+#tab-avvisi h3{margin:0 0 4px;font-size:16px}

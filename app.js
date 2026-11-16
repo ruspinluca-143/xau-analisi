@@ -622,8 +622,10 @@ const LOG_URL = "https://raw.githubusercontent.com/ruspinluca-143/xau-analisi/da
 let AUTO = null;
 async function loadAuto() {
   try {
-    const r = await fetch(LOG_URL + "?t=" + Date.now(), { cache: "no-store" });
-    AUTO = r.ok ? await r.json() : [];
+    let r = await fetch("/api/log?t=" + Date.now(), { cache: "no-store" }), mine = [];
+    if (r.ok) { try { mine = await r.json(); } catch (e) { mine = []; } }
+    if (Array.isArray(mine) && mine.length) AUTO = mine;
+    else { r = await fetch(LOG_URL + "?t=" + Date.now(), { cache: "no-store" }); AUTO = r.ok ? await r.json() : []; }
   } catch (e) { AUTO = null; }
   renderAuto();
 }

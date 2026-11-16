@@ -267,6 +267,44 @@ def refresh_journal(items, now_ts):
 JOURNAL_KEYS = ("id", "symbol", "tf", "setup", "dir", "entry", "stop", "rr", "hold", "entry_ts", "status")
 
 
+TICK = {"last": 0.0, "running": False, "result": "mai eseguito"}
+TICK_LOCK = threading.Lock()
+
+
+def _tick_worker():
+    import contextlib
+    import io
+    buf = io.StringIO()
+    try:
+        import notify as N
+        with contextlib.redirect_stdout(buf):
+            N.run(os.environ.get("NTFY_TOPIC", "").strip())
+        TICK["result"] = buf.getvalue().strip().splitlines()[-1:] or ["ok"]
+    except Exception as exc:  # noqa: BLE001
+        TICK["result"] = ["errore: %s" % exc]
+    finally:
+        TICK["running"] = False
+
+
+def api_tick(q):
+    """Controllo dei segnali + avvisi ntfy. Lo chiama un servizio esterno ogni minuto (sveglia anche il server)."""
+    with TICK_LOCK:
+        now = time.time()
+        if TICK["running"] or now - TICK["last"] < 45:
+            return {"ok": True, "skipped": True, "last": TICK["result"]}
+        TICK["running"], TICK["last"] = True, now
+    threading.Thread(target=_tick_worker, daemon=True).start()
+    return {"ok": True, "started": True, "last": TICK["result"], "ntfy": bool(os.environ.get("NTFY_TOPIC"))}
+
+
+def api_log(q):
+    try:
+        with open(os.environ.get("LOG_FILE", "log.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+
 def api_journal(body):
     now_ts = E.epoch(E.now_utc())
     items = []
@@ -321,9 +359,9 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
-ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals}
+ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log}
 POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
-PUBLIC_FILES = ("/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
+PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
 HITS = {}  # indirizzo -> orari delle ultime richieste
 HITS_LOCK = threading.Lock()
