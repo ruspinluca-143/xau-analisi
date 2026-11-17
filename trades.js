@@ -125,6 +125,18 @@
     msg(`Letto: ${r.trades.length} operazioni, di cui ${nuove} nuove (le altre c'erano già).` + (tolte ? ` Sostituite ${tolte} righe provvisorie con i dati veri.` : ""));
     render();
   }
+  /* contatore: quante operazioni sono davvero salvate in questo browser (riletto dalla memoria, non da quello che è in pagina) */
+  let persisted = null;
+  function updateCount() {
+    const el = document.querySelector("#opCount"); if (!el) return;
+    let stored = [];
+    try { stored = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { el.textContent = "Memoria del browser non leggibile."; el.style.color = "var(--red)"; return; }
+    const real = stored.filter((t) => !t.kind), prov = stored.filter((t) => t.src === "video" && !t.kind).length;
+    const range = real.length ? ` dal ${dd(real[0].ct)} al ${dd(real[real.length - 1].ct)}` : "";
+    el.textContent = `Salvate su questo telefono: ${real.length} operazioni${range}` + (prov ? ` (di cui ${prov} provvisorie da video)` : "") + (persisted === false ? " · memoria non protetta: il browser potrebbe cancellarla" : persisted === true ? " · memoria protetta" : "");
+    el.style.color = real.length ? "var(--green)" : "var(--muted)";
+  }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then((ok) => { persisted = !!ok; updateCount(); }).catch(() => {}); } catch (e) { /* senza: funziona uguale */ }
   function msg(t, bad) { const el = document.querySelector("#opMsg"); if (el) { el.textContent = t; el.style.color = bad ? "var(--red)" : "var(--green)"; } }
 
   /* ---------- periodi dal 9 al 8 ---------- */
@@ -181,6 +193,7 @@
 
   /* ---------- schermata ---------- */
   function render() {
+    updateCount();
     if (!document.querySelector("#opData")) return;
     const syms = [...new Set(T.map((t) => t.sym))];
     if (view.sym !== "all" && !syms.includes(view.sym)) view.sym = "all";
