@@ -184,12 +184,24 @@
   function weekdaysBetween(a, b) { // giorni lavorativi da a (escluso) a b (incluso), in UTC
     let n = 0; for (let d = Math.floor(a / 86400000) + 1; d <= Math.floor(b / 86400000); d++) { const w = new Date(d * 86400000).getUTCDay(); if (w >= 1 && w <= 5) n++; } return n;
   }
+  /* risultato di ogni giorno di mercato (lun-ven) dal primo all'ultimo giorno con operazioni; i giorni senza operazioni valgono 0 */
+  function dailySeries(list, val, useAdj) {
+    const real = list.filter((t) => !t.kind), adj = list.filter((t) => t.kind === "adj");
+    if (!real.length) return [];
+    const D = 86400000, d0 = Math.floor(Math.min(...real.map((t) => t.ct)) / D), d1 = Math.floor(Math.max(...real.map((t) => t.ct)) / D), days = [];
+    for (let d = d0; d <= d1; d++) { const w = new Date(d * D).getUTCDay(); if (w >= 1 && w <= 5) days.push(d); }
+    const idx = new Map(days.map((d, i) => [d, i])), out = new Array(days.length).fill(0);
+    real.forEach((t) => { let d = Math.floor(t.ct / D); while (!idx.has(d) && d <= d1) d++; while (!idx.has(d) && d >= d0) d--; if (idx.has(d)) out[idx.get(d)] += val(t); });
+    if (useAdj) adj.forEach((a) => { const from = Math.floor(periodStart(a.ct) / D), ds = days.filter((d) => d >= from && d <= Math.floor(a.ct / D)); ds.forEach((d) => { out[idx.get(d)] += a.net / ds.length; }); });
+    return out;
+  }
   function projection(pool) {
     const txt = document.querySelector("#opProjTxt"), note = document.querySelector("#opProjNote"); if (!txt) return;
     const trades = pool.filter((t) => !t.kind);
     const clr = (id) => { const cv = document.querySelector(id); if (cv) { const k = setupCanvas(cv); if (k) { k.c.fillStyle = css("--muted"); k.c.font = "13px sans-serif"; k.c.fillText("Servono più operazioni.", 8, 24); } } };
     if (trades.length < 30) { txt.textContent = "Servono almeno 30 operazioni per fare una stima."; clr("#cvOpProj"); clr("#cvOpProjH"); note.textContent = ""; return; }
-    const nets = trades.map((t) => t.net);
+    const nets = dailySeries(pool, (t) => t.net, true); // un valore per ogni giorno di mercato: la base della stima
+    if (nets.length < 10) { txt.textContent = "Servono almeno 10 giorni di mercato con operazioni per fare una stima."; clr("#cvOpProj"); clr("#cvOpProjH"); note.textContent = ""; return; }
     const last = Math.max(...pool.map((t) => t.ct)), now = Math.max(Date.now(), last);
     let st = periodStart(last); const endOf = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, START_DAY - 1, 23, 59, 59); };
     const M = horizonMonths(), endH = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + M, START_DAY - 1, 23, 59, 59); };
@@ -200,8 +212,8 @@
     else { base = pool.filter((t) => periodStart(t.ct) === st).reduce((a, t) => a + t.net, 0); label = "periodo in corso (" + periodLabel(st) + ")"; }
     const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
     if (M > 1) label = (ended || M > 12 ? "prossimi " : "") + (M === 3 ? "tre periodi" : M === 12 ? "dodici periodi" : M / 12 + " anni") + " (" + dl(st) + " – " + dl(endH(st)) + ")";
-    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endH(st)), N = Math.round(tpd * rem);
-    const R = 1500, rand = rng(12345), ends = [], dds = [], long = N > 6000;
+    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endH(st)), N = rem; // giorni di mercato rimasti
+    const R = 1500, rand = rng(12345), ends = [], dds = [], long = N > 3000;
     const mu = nets.reduce((a, b) => a + b, 0) / nets.length, sd = Math.sqrt(nets.reduce((a, b) => a + (b - mu) * (b - mu), 0) / Math.max(1, nets.length - 1));
     const gauss = () => { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
     const steps = Math.max(2, Math.min(N, 120)), per = N / steps; // punti sul grafico
@@ -237,11 +249,11 @@
     const mean = nets.reduce((a, b) => a + b, 0) / nets.length, flat = nets.map((v) => v - mean), r2 = rng(777), e0 = [];
     for (let r = 0; r < 800; r++) { let cum = base; if (long) { cum += sd * Math.sqrt(N) * gauss(); } else { for (let i = 0; i < N; i++) cum += flat[Math.floor(r2() * flat.length)]; } e0.push(cum); }
     e0.sort((a, b) => a - b); const med0 = pctile(e0, 0.5), pos0 = e0.filter((v) => v > 0).length / e0.length, lo0 = pctile(e0, 0.1);
-    txt.innerHTML = `Stima per ${M === 1 ? "il" : "i"} <b>${label}</b>. ${M > 1 ? "Finora nel periodo in corso" : "Finora"}: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato e, con il tuo ritmo (${num(tpd, 1)} operazioni al giorno), circa <b>${N}</b> operazioni.<br>`
+    txt.innerHTML = `Stima per ${M === 1 ? "il" : "i"} <b>${label}</b>. ${M > 1 ? "Finora nel periodo in corso" : "Finora"}: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato. Finora hai fatto in media <b class="${cls(mu)}">${sg(mu)}</b> per giorno di mercato (circa <b>${sg(mu * 21)}</b> per ogni periodo di un mese), calcolato su ${nets.length} giorni di mercato.<br>`
       + `Risultato ${endPhrase}: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
       + `Probabilità di chiudere il periodo in positivo: <b>${shown(pos)}</b>. Calo massimo che potresti incontrare nel periodo (95% dei casi): <b>${num(pctile(dds, 0.95), 0)}</b> dal punto più alto.<br>`
       + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.` + (M > 12 ? `<br><b>Attenzione:</b> su ${M / 12} anni questi importi sono solo un calcolo aritmetico (stesso ritmo e stessi lotti per sempre), non una previsione di quanto guadagnerai.` : "");
-    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "") + (M > 12 ? " Per più anni il calcolo usa la media e la variabilità dei tuoi risultati (non rimescola ogni singola operazione), con lotti costanti: non considera reinvestimento, inflazione, cambi di strategia né periodi in cui non operi." : "");
+    note.textContent = `Stima fatta rimescolando 1.500 volte i tuoi ${nets.length} giorni di mercato (anche quelli senza operazioni), cioè sulla media di quello che hai fatto finora diviso per i giorni. Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "") + (M > 12 ? " Per più anni il calcolo usa la media e la variabilità dei tuoi risultati (non rimescola ogni singolo giorno), con lotti costanti: non considera reinvestimento, inflazione, cambi di strategia né periodi in cui non operi." : "");
     fan("#cvOpProj", band, base, per, M <= 12 ? "fine " + endWord : endWord);
     hist("#cvOpProjH", ends);
   }
@@ -257,7 +269,7 @@
     c.strokeStyle = css("--green"); c.lineWidth = 2.2; c.beginPath(); band.forEach((b, i) => (i ? c.lineTo(X(i), Y(b[1])) : c.moveTo(X(i), Y(b[1])))); c.stroke();
     c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(ml, Y(0)); c.lineTo(w - mr, Y(0)); c.stroke(); c.setLineDash([]);
     c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText("oggi", ml, h - 4); c.textAlign = "right"; c.fillText(endLabel || "fine periodo", w - mr, h - 4);
-    cv._hit = (x) => { if (x > w - mr) return null; const i = Math.max(0, Math.min(band.length - 1, Math.round(((x - ml) / (w - ml - mr)) * n))), b = band[i], ops = Math.round(i * per); return `<b>${i === 0 ? "Oggi" : "Dopo circa " + ops + " operazioni"}</b><br>Caso mediano: <b class="${cls(b[1])}">${sg(b[1])}</b> (dopo tasse ${sg(afterTax(b[1]))})<br>Nel 10% dei casi peggiori: ${sg(b[0])} o meno<br>Nel 10% dei migliori: ${sg(b[2])} o più`; };
+    cv._hit = (x) => { if (x > w - mr) return null; const i = Math.max(0, Math.min(band.length - 1, Math.round(((x - ml) / (w - ml - mr)) * n))), b = band[i], ops = Math.round(i * per); return `<b>${i === 0 ? "Oggi" : "Dopo circa " + ops + " giorni di mercato"}</b><br>Caso mediano: <b class="${cls(b[1])}">${sg(b[1])}</b> (dopo tasse ${sg(afterTax(b[1]))})<br>Nel 10% dei casi peggiori: ${sg(b[0])} o meno<br>Nel 10% dei migliori: ${sg(b[2])} o più`; };
   }
   function hist(id, ends) {
     const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
@@ -309,9 +321,9 @@
     const u = trades.map((t) => t.net / (t.vol / 0.01)); // risultato di ogni operazione se fosse stata di 0,01 lotti
     const worstU = Math.min(...u), vols = trades.map((t) => t.vol).sort((a, b) => a - b);
     const q = (a, f) => a[Math.min(a.length - 1, Math.max(0, Math.round(f * (a.length - 1))))];
-    const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
-    const N = Math.max(10, Math.round(tpd * 21)), rand = rng(4242), fin = [], dds = [];
-    for (let r = 0; r < 1200; r++) { let cum = 0, peak = 0, dd = 0; for (let i = 0; i < N; i++) { cum += u[Math.floor(rand() * u.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; } fin.push(cum); dds.push(dd); }
+    const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, du = dailySeries(trades, (t) => t.net / (t.vol / 0.01), false);
+    const N = 21, rand = rng(4242), fin = [], dds = []; // un periodo = circa 21 giorni di mercato
+    for (let r = 0; r < 1200; r++) { let cum = 0, peak = 0, dd = 0; for (let i = 0; i < N; i++) { cum += du[Math.floor(rand() * du.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; } fin.push(cum); dds.push(dd); }
     fin.sort((a, b) => a - b); dds.sort((a, b) => a - b);
     const dd1 = Math.max(q(dds, 0.95), 0.01), med1 = q(fin, 0.5), p101 = q(fin, 0.1), w1 = Math.abs(worstU);
     const typ = q(vols, 0.5), high = q(vols, 0.9), lf = (x) => num(x, 2);
@@ -324,7 +336,7 @@
     const base = [0.01, 0.02, 0.03, 0.05, 0.1];
     if (!(cap > 0)) {
       el.innerHTML = `<p class="small">Scrivi qui sopra quanti soldi <b>tuoi</b> hai sul conto (senza credito o bonus del broker) e ti dico quale lotto è coerente con come operi. Intanto, sui tuoi risultati passati:</p>`
-        + `<p class="small">Il tuo lotto abituale è <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}). Ogni 0,01 lotti, in un periodo di circa ${N} operazioni, hanno dato un calo massimo di <b>${num(dd1, 0)}</b> (95% dei casi) e la peggiore operazione ha perso <b>${num(w1, 0)}</b>.</p>` + rows(base);
+        + `<p class="small">Il tuo lotto abituale è <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}). Ogni 0,01 lotti, in un periodo di ${N} giorni di mercato, hanno dato un calo massimo di <b>${num(dd1, 0)}</b> (95% dei casi) e la peggiore operazione ha perso <b>${num(w1, 0)}</b>.</p>` + rows(base);
       return;
     }
     const lotDD = Math.floor((ddPct * cap) / dd1), lotTr = Math.floor((0.05 * cap) / w1), recU = Math.max(1, Math.min(lotDD, lotTr)), rec = recU * 0.01;

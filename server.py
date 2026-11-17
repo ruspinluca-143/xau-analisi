@@ -7,6 +7,7 @@ Solo libreria standard. Ascolta solo su 127.0.0.1 (il tuo computer).
 """
 import argparse
 import base64
+import datetime
 import hmac
 import json
 import math
@@ -297,6 +298,43 @@ def api_tick(q):
     return {"ok": True, "started": True, "last": TICK["result"], "ntfy": bool(os.environ.get("NTFY_TOPIC"))}
 
 
+CAL = {"t": 0.0, "data": None}
+CAL_URLS = ("https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json")
+
+
+def api_calendar(q):
+    """Eventi economici 'rossi' (impatto alto) della settimana e della prossima, da un calendario pubblico gratuito.
+    Cache di 30 minuti (la fonte limita le richieste); se la fonte non risponde si riusa l'ultima copia buona."""
+    now = time.time()
+    if CAL["data"] is not None and now - CAL["t"] < 1800:
+        return CAL["data"]
+    events, ok = [], False
+    for u in CAL_URLS:
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=12) as r:
+                arr = json.loads(r.read().decode("utf-8"))
+            ok = True
+            for x in arr:
+                if x.get("impact") != "High":
+                    continue
+                try:
+                    ts = int(datetime.datetime.fromisoformat(x["date"]).timestamp())
+                except (KeyError, ValueError):
+                    continue
+                events.append({"ts": ts, "country": str(x.get("country", ""))[:4], "title": str(x.get("title", ""))[:120],
+                               "forecast": str(x.get("forecast", ""))[:20], "previous": str(x.get("previous", ""))[:20]})
+        except Exception:  # noqa: BLE001  (una delle due settimane puo' non esserci ancora)
+            continue
+    if not ok:
+        if CAL["data"] is not None:
+            return CAL["data"]
+        raise ValueError("calendario non raggiungibile adesso")
+    events.sort(key=lambda e: e["ts"])
+    CAL["data"], CAL["t"] = {"events": events, "updated": int(now), "source": "calendario pubblico (impatto alto)"}, now
+    return CAL["data"]
+
+
 def api_log(q):
     try:
         with open(os.environ.get("LOG_FILE", "log.json"), encoding="utf-8") as fh:
@@ -359,7 +397,7 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
-ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log}
+ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar}
 POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
