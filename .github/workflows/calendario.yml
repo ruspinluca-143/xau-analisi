@@ -1,0 +1,66 @@
+name: Calendario
+
+# Ogni 6 ore scarica il calendario pubblico degli eventi economici e ne salva la parte ad alto impatto (rossi)
+# nel ramo "dati" (calendar.json): è la copia di riserva dell'app se il server non riesce a leggere la fonte.
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: calendario
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  calendario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepara il ramo dati
+        run: |
+          if git ls-remote --exit-code --heads origin dati >/dev/null 2>&1; then
+            git fetch origin dati
+            git worktree add -B dati dati origin/dati
+          else
+            git worktree add --orphan -b dati dati
+          fi
+      - name: Scarica il calendario e tieni solo gli eventi rossi
+        run: |
+          python - <<'PY'
+          import datetime, json, urllib.request
+          out, ok = [], False
+          for u in ("https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json"):
+              try:
+                  req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (compatible; xau-analisi/1.0)"})
+                  arr = json.loads(urllib.request.urlopen(req, timeout=20).read().decode("utf-8"))
+              except Exception as exc:
+                  print("non raggiungibile:", u, exc)
+                  continue
+              ok = True
+              for x in arr:
+                  if x.get("impact") != "High":
+                      continue
+                  ts = int(datetime.datetime.fromisoformat(x["date"]).timestamp())
+                  out.append({"ts": ts, "country": x.get("country", ""), "title": x.get("title", ""), "forecast": x.get("forecast", ""), "previous": x.get("previous", "")})
+          if ok:
+              out.sort(key=lambda e: e["ts"])
+              json.dump({"events": out, "updated": int(datetime.datetime.now().timestamp())}, open("dati/calendar.json", "w"), ensure_ascii=False, separators=(",", ":"))
+              print(len(out), "eventi rossi salvati")
+          else:
+              raise SystemExit("nessuna fonte raggiungibile")
+          PY
+      - name: Salva
+        run: |
+          cd dati
+          git add -A
+          if ! git diff --cached --quiet; then
+            git -c user.name="calendario-bot" -c user.email="calendario-bot@users.noreply.github.com" commit -q -m "Calendario $(date -u '+%Y-%m-%d %H:%M') UTC"
+            git push origin HEAD:dati
+          fi

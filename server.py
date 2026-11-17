@@ -299,39 +299,61 @@ def api_tick(q):
 
 
 CAL = {"t": 0.0, "data": None}
-CAL_URLS = ("https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json")
+CAL_FF = ("https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json")
+CAL_BACKUP = "https://raw.githubusercontent.com/ruspinluca-143/xau-analisi/dati/calendar.json"  # copia aggiornata da GitHub Actions
+UA = {"User-Agent": "Mozilla/5.0 (compatible; xau-analisi/1.0)", "Accept": "application/json"}
+
+
+def _get_json(url, why):
+    try:
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=12) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        why.append("%s: %s" % (url.split("/")[2], str(exc)[:70]))
+        return None
+
+
+def cal_events(arr):
+    out = []
+    for x in arr:
+        if x.get("impact") != "High":
+            continue
+        try:
+            ts = int(datetime.datetime.fromisoformat(x["date"]).timestamp())
+        except (KeyError, ValueError):
+            continue
+        out.append({"ts": ts, "country": str(x.get("country", ""))[:4], "title": str(x.get("title", ""))[:120],
+                    "forecast": str(x.get("forecast", ""))[:20], "previous": str(x.get("previous", ""))[:20]})
+    return out
 
 
 def api_calendar(q):
-    """Eventi economici 'rossi' (impatto alto) della settimana e della prossima, da un calendario pubblico gratuito.
-    Cache di 30 minuti (la fonte limita le richieste); se la fonte non risponde si riusa l'ultima copia buona."""
+    """Eventi economici 'rossi' (impatto alto) dei prossimi giorni, da un calendario pubblico gratuito.
+    Prima la fonte diretta; se il server non riesce a raggiungerla, la copia che GitHub Actions tiene aggiornata nel ramo 'dati'.
+    Cache di 30 minuti; se nessuna fonte risponde si riusa l'ultima copia buona."""
     now = time.time()
     if CAL["data"] is not None and now - CAL["t"] < 1800:
         return CAL["data"]
-    events, ok = [], False
-    for u in CAL_URLS:
-        try:
-            req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=12) as r:
-                arr = json.loads(r.read().decode("utf-8"))
-            ok = True
-            for x in arr:
-                if x.get("impact") != "High":
-                    continue
-                try:
-                    ts = int(datetime.datetime.fromisoformat(x["date"]).timestamp())
-                except (KeyError, ValueError):
-                    continue
-                events.append({"ts": ts, "country": str(x.get("country", ""))[:4], "title": str(x.get("title", ""))[:120],
-                               "forecast": str(x.get("forecast", ""))[:20], "previous": str(x.get("previous", ""))[:20]})
-        except Exception:  # noqa: BLE001  (una delle due settimane puo' non esserci ancora)
-            continue
-    if not ok:
+    why, events, src = [], [], ""
+    got = False
+    for u in CAL_FF:
+        arr = _get_json(u, why)
+        if arr is not None:
+            got = True
+            events += cal_events(arr)
+    if got:
+        src = "calendario pubblico"
+    else:
+        bk = _get_json(CAL_BACKUP, why)
+        if isinstance(bk, dict) and isinstance(bk.get("events"), list) and bk["events"]:
+            events, got, src = bk["events"], True, "copia del calendario pubblico (aggiornata da GitHub)"
+    if not got:
         if CAL["data"] is not None:
             return CAL["data"]
-        raise ValueError("calendario non raggiungibile adesso")
+        raise ValueError("calendario non raggiungibile adesso (%s)" % "; ".join(why)[:300])
     events.sort(key=lambda e: e["ts"])
-    CAL["data"], CAL["t"] = {"events": events, "updated": int(now), "source": "calendario pubblico (impatto alto)"}, now
+    CAL["data"], CAL["t"] = {"events": events, "updated": int(now), "source": src}, now
     return CAL["data"]
 
 
