@@ -4,7 +4,7 @@
   const KEY = "xau_trades_v1", START_DAY = 9;
   const MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
   const GIORNI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
-  let T = [], view = { period: "all", sym: "all" };
+  let T = [], view = { period: "all", sym: "all", horizon: "1" };
   try { T = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { T = []; }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(T)); } catch (e) { msg("Memoria piena: non riesco a salvare.", true); } };
   const TAX = 0.26, afterTax = (v) => (v > 0 ? v * (1 - TAX) : v); // stima: 26% sul guadagno netto positivo
@@ -175,6 +175,7 @@
     const last = pts[pts.length - 1].v; c.strokeStyle = last >= 0 ? css("--green") : css("--red"); c.lineWidth = 2.4; c.beginPath();
     pts.forEach((p, i) => (i ? c.lineTo(X(i), Y(p.v)) : c.moveTo(X(i), Y(p.v)))); c.stroke();
     c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText(pts[0].t, ml, h - 4); c.textAlign = "right"; c.fillText(pts[pts.length - 1].t, w - mr, h - 4);
+    cv._hit = (x) => { if (x > w - mr + 4) return null; const i = Math.max(0, Math.min(pts.length - 1, Math.round(((x - ml) / (w - ml - mr)) * (pts.length - 1)))), p = pts[i]; return `<b>${p.t}</b><br>Totale: <b class="${cls(p.v)}">${sg(p.v)}</b>` + (p.d ? "<br>" + p.d : ""); };
   }
 
   /* ---------- prospettive: stime dai risultati passati (non sono previsioni) ---------- */
@@ -191,11 +192,15 @@
     const nets = trades.map((t) => t.net);
     const last = Math.max(...pool.map((t) => t.ct)), now = Math.max(Date.now(), last);
     let st = periodStart(last); const endOf = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, START_DAY - 1, 23, 59, 59); };
+    const M = +view.horizon || 1, endH = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + M, START_DAY - 1, 23, 59, 59); };
+    const dl = (ms) => { const d = new Date(ms); return `${d.getUTCDate()} ${MESI[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+    const endWord = M === 1 ? "periodo" : M === 3 ? "trimestre" : "anno";
     let ended = now > endOf(st), base, label;
     if (ended) { st = periodStart(endOf(st) + 86400000); base = 0; label = "prossimo periodo (" + periodLabel(st) + ")"; }
     else { base = pool.filter((t) => periodStart(t.ct) === st).reduce((a, t) => a + t.net, 0); label = "periodo in corso (" + periodLabel(st) + ")"; }
     const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
-    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endOf(st)), N = Math.min(600, Math.round(tpd * rem));
+    if (M > 1) label = (ended ? "prossimi " : "") + (M === 3 ? "tre periodi" : "dodici periodi") + " (" + dl(st) + " – " + dl(endH(st)) + ")";
+    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endH(st)), N = Math.min(6000, Math.round(tpd * rem));
     const R = 1500, rand = rng(12345), paths = [], ends = [], dds = [];
     const steps = Math.max(2, Math.min(N, 120)), per = N / steps; // punti sul grafico
     const grid = Array.from({ length: steps + 1 }, () => []);
@@ -217,15 +222,15 @@
     const mean = nets.reduce((a, b) => a + b, 0) / nets.length, flat = nets.map((v) => v - mean), r2 = rng(777), e0 = [];
     for (let r = 0; r < 800; r++) { let cum = base; for (let i = 0; i < N; i++) cum += flat[Math.floor(r2() * flat.length)]; e0.push(cum); }
     e0.sort((a, b) => a - b); const med0 = pctile(e0, 0.5), pos0 = e0.filter((v) => v > 0).length / e0.length, lo0 = pctile(e0, 0.1);
-    txt.innerHTML = `Stima per il <b>${label}</b>. Finora: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato e, con il tuo ritmo (${num(tpd, 1)} operazioni al giorno), circa <b>${N}</b> operazioni.<br>`
-      + `Risultato di fine periodo: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
+    txt.innerHTML = `Stima per ${M === 1 ? "il" : "i"} <b>${label}</b>. ${M > 1 ? "Finora nel periodo in corso" : "Finora"}: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato e, con il tuo ritmo (${num(tpd, 1)} operazioni al giorno), circa <b>${N}</b> operazioni.<br>`
+      + `Risultato di fine ${endWord}: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
       + `Probabilità di chiudere il periodo in positivo: <b>${shown(pos)}</b>. Calo massimo che potresti incontrare nel periodo (95% dei casi): <b>${num(pctile(dds, 0.95), 0)}</b> dal punto più alto.<br>`
       + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.`;
-    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.`;
-    fan("#cvOpProj", band, base, per);
+    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "");
+    fan("#cvOpProj", band, base, per, "fine " + endWord);
     hist("#cvOpProjH", ends);
   }
-  function fan(id, band, base, per) {
+  function fan(id, band, base, per, endLabel) {
     const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
     const ml = 8, mr = 50, mt = 10, mb = 18, ys = band.flatMap((b) => b).concat([0, base]), span = Math.max(...ys) - Math.min(...ys) || 1;
     const lo = Math.min(...ys) - span * 0.06, hi = Math.max(...ys) + span * 0.06, n = band.length - 1 || 1;
@@ -236,7 +241,8 @@
     c.fillStyle = "rgba(120,200,160,.22)"; c.fill();
     c.strokeStyle = css("--green"); c.lineWidth = 2.2; c.beginPath(); band.forEach((b, i) => (i ? c.lineTo(X(i), Y(b[1])) : c.moveTo(X(i), Y(b[1])))); c.stroke();
     c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(ml, Y(0)); c.lineTo(w - mr, Y(0)); c.stroke(); c.setLineDash([]);
-    c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText("oggi", ml, h - 4); c.textAlign = "right"; c.fillText("fine periodo", w - mr, h - 4);
+    c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText("oggi", ml, h - 4); c.textAlign = "right"; c.fillText(endLabel || "fine periodo", w - mr, h - 4);
+    cv._hit = (x) => { if (x > w - mr) return null; const i = Math.max(0, Math.min(band.length - 1, Math.round(((x - ml) / (w - ml - mr)) * n))), b = band[i], ops = Math.round(i * per); return `<b>${i === 0 ? "Oggi" : "Dopo circa " + ops + " operazioni"}</b><br>Caso mediano: <b class="${cls(b[1])}">${sg(b[1])}</b> (dopo tasse ${sg(afterTax(b[1]))})<br>Nel 10% dei casi peggiori: ${sg(b[0])} o meno<br>Nel 10% dei migliori: ${sg(b[2])} o più`; };
   }
   function hist(id, ends) {
     const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
@@ -246,6 +252,7 @@
     cnt.forEach((n, i) => { const mid = lo + (i + 0.5) * bw0; c.fillStyle = mid >= 0 ? css("--green") : css("--red"); const bh = (n / mx) * (h - mt - mb); c.fillRect(ml + i * bw + 1, h - mb - bh, bw - 2, bh); });
     c.fillStyle = css("--muted"); c.font = "11px sans-serif"; c.textAlign = "left"; c.fillText(num(lo, 0), ml, h - 4); c.textAlign = "right"; c.fillText(num(hi, 0), w - mr, h - 4);
     if (lo < 0 && hi > 0) { const x = ml + ((0 - lo) / (hi - lo)) * (w - ml - mr); c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.beginPath(); c.moveTo(x, mt); c.lineTo(x, h - mb); c.stroke(); c.setLineDash([]); c.textAlign = "center"; c.fillText("0", x, h - 4); }
+    cv._hit = (x) => { const i = Math.floor((x - ml) / bw); if (i < 0 || i >= B || x > w - mr) return null; const a = lo + i * bw0, b2 = a + bw0, above = cnt.slice(i).reduce((q, v) => q + v, 0) / ends.length; return `<b>Da ${sg(a)} a ${sg(b2)}</b><br>${pct(cnt[i] / ends.length, 1)} degli scenari chiude qui<br>${pct(above)} degli scenari chiude a ${sg(a)} o più`; };
   }
 
   /* ---------- dati veri: calo massimo, serie, giorni migliori e peggiori, dimensione delle operazioni ---------- */
@@ -284,6 +291,7 @@
     });
     c.fillStyle = css("--muted"); c.textAlign = "center"; const every = Math.ceil(items.length / Math.max(1, Math.floor((w - ml - mr) / 34)));
     items.forEach((it, i) => { if (i % every === 0) c.fillText(it.t, ml + i * bw + bw / 2, h - 4); });
+    cv._hit = (x) => { const i = Math.floor((x - ml) / bw), it = items[i]; if (!it || x > w - mr) return null; return `<b>${it.t}</b><br>Risultato: <b class="${cls(it.v)}">${sg(it.v)}</b>` + (it.d ? "<br>" + it.d : ""); };
   }
 
   /* ---------- schermata ---------- */
@@ -315,15 +323,16 @@
     document.querySelector("#opTaxNote").textContent = s.n ? (s.net > 0 ? `Tasse stimate: ${num(s.net - afterTax(s.net))} (26% del guadagno netto del periodo). ` : "Periodo in perdita: nessuna tassa stimata. ") + "È una stima indicativa: la tassazione vera dipende dalla tua situazione (per esempio dalla compensazione delle perdite)." : "";
     extra(L);
     // curva
-    let run = 0; const curve = L.map((t) => ({ v: (run += t.net), t: dd(t.ct) }));
+    let run = 0; const curve = L.map((t) => ({ v: (run += t.net), t: dd(t.ct) + " " + hm(t.ct), d: t.kind === "adj" ? "Swap del periodo (da totale del conto)" : `${t.dir === "buy" ? "BUY" : "SHORT"}${t.vol != null ? " " + num(t.vol) + " lotti" : ""} su ${esc(t.sym)}: <b class="${cls(t.net)}">${sg(t.net)}</b><br>Apertura ${num(t.op)} · chiusura ${num(t.cp)}${t.src === "video" ? "<br><span class=\"muted\">dato provvisorio da video</span>" : ""}` }));
     lineChart("#cvOpEq", curve);
     // per giorno
-    const byDay = new Map(); L.forEach((t) => { const k = Math.floor(t.ct / 86400000); byDay.set(k, (byDay.get(k) || 0) + t.net); });
-    barChart("#cvOpDay", [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([k, v]) => ({ v, t: dd(k * 86400000) })));
+    const byDay = new Map(); L.forEach((t) => { const k = Math.floor(t.ct / 86400000), o = byDay.get(k) || { v: 0, n: 0, w: 0, b: -1e9, wo: 1e9 }; o.v += t.net; if (!t.kind) { o.n++; if (t.net > 0) o.w++; o.b = Math.max(o.b, t.net); o.wo = Math.min(o.wo, t.net); } byDay.set(k, o); });
+    barChart("#cvOpDay", [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([k, o]) => ({ v: o.v, t: dd(k * 86400000), d: o.n ? `${o.n} operazioni · vinte ${pct(o.w / o.n)}<br>Migliore ${sg(o.b)} · peggiore ${num(o.wo)}` : "" })));
     // giorno della settimana e ora
-    const wd = [1, 2, 3, 4, 5].map((d) => ({ t: GIORNI[d], v: L.filter((t) => !t.kind && new Date(t.ct).getUTCDay() === d).reduce((a, t) => a + t.net, 0) }));
+    const dstr = (l) => (l.length ? `${l.length} operazioni · vinte ${pct(l.filter((t) => t.net > 0).length / l.length)} · media ${sg(l.reduce((a, t) => a + t.net, 0) / l.length)}` : "nessuna operazione");
+    const wd = [1, 2, 3, 4, 5].map((d) => { const l = L.filter((t) => !t.kind && new Date(t.ct).getUTCDay() === d); return { t: GIORNI[d], v: l.reduce((a, t) => a + t.net, 0), d: dstr(l) }; });
     barChart("#cvOpWd", wd);
-    const hrs = Array.from({ length: 24 }, (_, hh) => ({ t: String(hh), v: L.filter((t) => !t.kind && new Date(t.ot).getUTCHours() === hh).reduce((a, t) => a + t.net, 0) }));
+    const hrs = Array.from({ length: 24 }, (_, hh) => { const l = L.filter((t) => !t.kind && new Date(t.ot).getUTCHours() === hh); return { t: String(hh) + ":00", v: l.reduce((a, t) => a + t.net, 0), d: dstr(l) }; });
     barChart("#cvOpHr", hrs);
     // buy vs short
     document.querySelector("#opDir").innerHTML = ["buy", "sell"].map((d) => {
@@ -336,7 +345,7 @@
       return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
     projection(pool);
-    barChart("#cvOpPer", [...starts].reverse().map((st) => ({ t: MESI[new Date(st).getUTCMonth()], v: stats(pool.filter((t) => periodStart(t.ct) === st)).net })));
+    barChart("#cvOpPer", [...starts].reverse().map((st) => { const x = stats(pool.filter((t) => periodStart(t.ct) === st)); return { t: periodLabel(st), v: x.net, d: `${x.n} operazioni · vinte ${pct(x.win)}<br>Dopo tasse ${sg(afterTax(x.net))}` }; }));
     // elenco
     document.querySelector("#opList").innerHTML = [...L].reverse().slice(0, 60).map((t) => t.kind === "adj"
       ? `<div class="sigrow"><div class="sr1"><b>Swap del periodo</b><span class="when">${dd(t.ct)}</span></div><div class="sr2"><span>Da totale del conto: finché non arriva l'estratto mensile</span></div><div class="sr3"><span class="pill ${t.net < 0 ? "red" : "green"}">${sg(t.net)}</span></div></div>`
@@ -348,8 +357,13 @@
   const hm = (ms) => { const d = new Date(ms); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); };
 
   /* ---------- comandi ---------- */
+  function buildProjSeg() {
+    const el = document.querySelector("#opProjSeg"); if (!el || typeof seg !== "function") return;
+    seg(el, [{ label: "Mensile", value: "1" }, { label: "Trimestrale", value: "3" }, { label: "Annuale", value: "12" }], view.horizon || "1", (v) => { view.horizon = v; buildProjSeg(); render(); });
+  }
   function init() {
     const f = document.querySelector("#opFile"); if (!f) return;
+    buildProjSeg();
     f.onchange = async () => {
       for (const file of f.files) { try { importText(decode(await file.arrayBuffer())); } catch (e) { msg("Non riesco a leggere il file: " + e.message, true); } }
       f.value = "";
@@ -358,7 +372,7 @@
     document.querySelector("#opImport").onclick = () => { const t = document.querySelector("#opText").value; if (t.trim()) { importText(t); document.querySelector("#opText").value = ""; document.querySelector("#opPasteBox").hidden = true; } };
     document.querySelector("#opPeriod").onchange = (e) => { view.period = e.target.value; view.touched = true; render(); };
     document.querySelector("#opSym").onchange = (e) => { view.sym = e.target.value; render(); };
-    document.querySelector("#opClear").onclick = () => { if (confirm("Cancello tutte le operazioni salvate su questo telefono?")) { T = []; save(); view = { period: "all", sym: "all" }; msg("Dati cancellati."); render(); } };
+    document.querySelector("#opClear").onclick = () => { if (confirm("Cancello tutte le operazioni salvate su questo telefono?")) { T = []; save(); view = { period: "all", sym: "all", horizon: "1" }; msg("Dati cancellati."); render(); } };
     document.querySelector("#opExport").onclick = () => {
       const f2 = (ms) => { const d = new Date(ms), z = (n) => String(n).padStart(2, "0"); return `${d.getUTCFullYear()}.${z(d.getUTCMonth() + 1)}.${z(d.getUTCDate())} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}:${z(d.getUTCSeconds())}`; };
       // stesso formato che l'importazione sa leggere: serve per portare i dati su un altro telefono senza duplicati

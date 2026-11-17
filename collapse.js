@@ -1,18 +1,17 @@
-/* Ogni riquadro (card) si può chiudere toccando il suo titolo: così occupa meno spazio. Lo stato resta salvato sul telefono. */
+/* Ogni riquadro (card) si può chiudere toccando il suo titolo e RESTA chiuso anche dopo aver chiuso e riaperto l'app.
+   Lo stato è salvato sul telefono; l'identificativo è schermata + posizione del riquadro (non dipende dal testo del titolo). */
 (function () {
-  const KEY = "xau_collapsed";
+  const KEY = "xau_collapsed_v2";
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* senza: funziona uguale */ } };
-  function setup(card) {
+  function setup(card, id) {
     const h = card.querySelector(":scope > h3, :scope > .row > h3, :scope > .dc-head > h3");
     if (!h) return;
     const head = h.parentElement === card ? h : h.parentElement;
     if (head.dataset.coll) return;
     head.dataset.coll = "1"; head.classList.add("collhead");
-    const id = ((card.closest(".tab") || {}).id || "") + "|" + h.textContent.trim().slice(0, 40);
-    const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "▾"; chev.setAttribute("aria-hidden", "true");
-    h.appendChild(chev); h.classList.add("colltitle"); h.setAttribute("role", "button"); h.tabIndex = 0;
+    h.classList.add("colltitle"); h.setAttribute("role", "button"); h.tabIndex = 0;
     const apply = (on) => { card.classList.toggle("collapsed", on); h.setAttribute("aria-expanded", on ? "false" : "true"); };
     apply(!!saved[id]);
     const toggle = () => {
@@ -24,7 +23,7 @@
     h.addEventListener("click", toggle);
     h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   }
-  document.querySelectorAll(".card").forEach(setup);
+  document.querySelectorAll(".tab").forEach((tab) => tab.querySelectorAll(".card").forEach((card, i) => setup(card, tab.id + "#" + i)));
   // alla riapertura i grafici dei riquadri chiusi non hanno larghezza: li ridisegno appena possibile
   setTimeout(() => window.dispatchEvent(new Event("resize")), 400);
 })();

@@ -204,3 +204,15 @@ button:active{transform:scale(.96);opacity:.85}
 .card.collapsed>*:not(.collhead){display:none!important}
 .card.collapsed{padding-bottom:12px}
 .card.collapsed .collhead{margin-bottom:0}
+
+/* freccia dei riquadri richiudibili (da CSS: sopravvive ai cambi di testo del titolo) */
+.colltitle::after{content:"▾";display:inline-block;margin-left:8px;font-size:.85em;opacity:.55;transition:transform .15s ease}
+.card.collapsed .colltitle::after{transform:rotate(-90deg)}
+/* dettagli al tocco sui grafici */
+.card{position:relative}
+canvas.cv{cursor:pointer}
+.chartinfo{position:absolute;z-index:20;max-width:min(300px,calc(100% - 12px));background:#14131c;border:1px solid var(--line);border-radius:14px;padding:10px 30px 10px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 8px 28px rgba(0,0,0,.5)}
+.chartinfo b{font-weight:700}
+.chartinfo .g,.chartinfo .up{color:var(--green)}.chartinfo .r,.chartinfo .down{color:var(--red)}
+.chartinfo .muted{color:var(--muted)}
+.chartinfo-x{position:absolute;top:4px;right:6px;background:none;border:0;color:var(--muted);font-size:14px;cursor:pointer;padding:4px}

@@ -212,6 +212,7 @@ function renderMtf() {
 
 /* ---------- canvas ---------- */
 function setupCanvas(cv) {
+  cv._hit = null; // dettagli al tocco: ogni grafico li registra quando si disegna
   const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
   if (!w || !h) return null;
   cv.width = w * dpr; cv.height = h * dpr;
@@ -333,6 +334,12 @@ function renderChart() {
     if (i % every !== 0) continue; const t = bars[i][0];
     c.fillText(ch.sec >= 86400 ? dIT(t) : ch.sec >= 3600 ? tIT(t) + " " + dIT(t) : tIT(t), Math.min(Math.max(X(i), ml + 24), w - mr - 24), h - 6);
   }
+  cv._hit = (x) => {
+    const Vh = zView("candles", 0, n, Math.min(120, n)), i = Math.round(Vh.lo + (x - ml) / pw * Vh.span - 0.5);
+    if (i < 0 || i >= n || x > w - mr) return null;
+    const b = bars[i], o2 = off(), d = b[4] - b[1];
+    return `<b>${ch.sec >= 86400 ? dIT(b[0]) : tIT(b[0], true)}</b><br>Apertura <b>${fmt(b[1] + o2)}</b> · chiusura <b>${fmt(b[4] + o2)}</b><br>Massimo ${fmt(b[2] + o2)} · minimo ${fmt(b[3] + o2)}<br>Variazione <b class="${d >= 0 ? "up" : "down"}">${d >= 0 ? "+" : ""}${fmt(d)}</b> (${(d / b[1] * 100).toFixed(2).replace(".", ",")}%)${ch.sma20 && ch.sma20[i] != null ? `<br>Media 20: ${fmt(ch.sma20[i] + o2)}` : ""}`;
+  };
 }
 
 function drawAxesR(c, w, h, lo, ymin, ymax, ml, mr, mt, mb, rr, hi, lab, flip, hint) {
@@ -380,6 +387,13 @@ function renderTm() {
       band(bd.p5, bd.p95, css("--accent"), 0.10); band(bd.p25, bd.p75, css("--accent"), 0.18);
       c.strokeStyle = css("--accent"); c.lineWidth = 2.2; c.beginPath(); bd.p50.forEach((v, i) => (i ? c.lineTo(Xs(i), Y(tr(v))) : c.moveTo(Xs(i), Y(tr(v))))); c.stroke();
       c.restore();
+      cvF._hit = (x) => {
+        if (x > w - mr) return null;
+        let bi = 0, bx = 1e9; for (let i = 0; i <= n; i++) { const dx = Math.abs(Xs(i) - x); if (dx < bx) { bx = dx; bi = i; } }
+        if (bd.p50[bi] == null) return null;
+        const m = Math.round(bi * (res.sec || (S.data.chart && S.data.chart.sec) || 300) / 60), pv = (R) => (labP ? ` (${labP(R)})` : "");
+        return `<b>${bi === 0 ? "Ora" : "Dopo " + fmtDur(m)}</b><br>Percorso più probabile: <b>${sgn(bd.p50[bi])}R</b>${pv(bd.p50[bi])}<br>Metà dei percorsi tra ${sgn(bd.p25[bi])}R e ${sgn(bd.p75[bi])}R<br>9 su 10 tra ${sgn(bd.p5[bi])}R e ${sgn(bd.p95[bi])}R`;
+      };
       c.fillStyle = css("--muted"); c.textAlign = "center"; c.font = "11px sans-serif";
       const sec = res.sec || (S.data.chart && S.data.chart.sec) || 300;
       [VF.lo, (VF.lo + VF.hi) / 2, VF.hi].forEach((i, q) => { i = Math.round(i); const m = Math.round(i * sec / 60); c.fillText(i === 0 ? "ora" : "+" + (m >= 180 ? (m / 60).toFixed(m % 60 ? 1 : 0).replace(".", ",") + " h" : m + " min"), Xs(i) + (q === 2 ? -14 : 0), h - 6); });
@@ -412,6 +426,19 @@ function renderTm() {
     c.globalAlpha = 1;
     if (S.selCase != null && cases[S.selCase]) { const x = cases[S.selCase], o = x.out[k2]; if (o) { c.strokeStyle = css("--ink"); c.lineWidth = 3; line(pts(x)); } }
     c.restore();
+    cvC._hit = (x, y) => {
+      if (x > w - mr) return null;
+      let best = -1, bdist = 1e9;
+      cases.forEach((cs, idx) => {
+        const o = cs.out[k2]; if (!o || o[0] === "open") return; const p = pts(cs); if (!p.length) return;
+        let bi = 0, bx = 1e9; for (let i = 0; i < p.length; i++) { const dx = Math.abs(Xs(i) - x); if (dx < bx) { bx = dx; bi = i; } }
+        if (bx > 14) return; const dist = Math.abs(Y(tr(p[bi])) - y); if (dist < bdist) { bdist = dist; best = idx; }
+      });
+      if (best < 0 || bdist > 22) return null;
+      const cs = cases[best], o = cs.out[k2];
+      setTimeout(() => { S.selCase = best; $("#caseNote").textContent = `Selezionata: ${cs.label}, ${o[0]}, ${sgn(o[1])}R.`; renderTm(); }, 0);
+      return `<b>${cs.label}</b><br>${o[0] === "target" ? "Arrivata al target" : o[0] === "stop" ? "Fermata dallo stop" : "Né target né stop"}: <b>${sgn(o[1])}R</b><br>Durata: ${(o[2] || 0) + 1} barre`;
+    };
     c.fillStyle = css("--muted"); c.textAlign = "center"; c.fillText("barre dall'ingresso", (w - mr) / 2, h - 6);
   }
   const nn = stats.length, hit = tgt + stp, need = 1 / (1 + S.rr);
@@ -502,6 +529,10 @@ function loadJournalChart() {
   const X = (i) => ml + i / (eq.length - 1) * (w - ml - mr), Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.textAlign = "left"; niceTicks(lo, hi, 4).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(t.toFixed(1) + "R", w - mr + 6, Y(t) + 4); });
   const last = eq[eq.length - 1][1]; c.strokeStyle = last >= 0 ? css("--green") : css("--red"); c.lineWidth = 2.4; c.beginPath(); eq.forEach((e, i) => (i ? c.lineTo(X(i), Y(e[1])) : c.moveTo(X(i), Y(e[1])))); c.stroke();
+  k.c.canvas._hit = (x) => {
+    const i = Math.max(0, Math.min(eq.length - 1, Math.round((x - ml) / (w - ml - mr) * (eq.length - 1)))), e = eq[i];
+    return `<b>${e[0] > 1e9 ? tIT(e[0], true) : "Segnale " + (i + 1)}</b><br>Totale: <b class="${e[1] >= 0 ? "up" : "down"}">${sgn(e[1])} R</b>` + (i ? `<br>Questo segnale: ${sgn(e[1] - eq[i - 1][1])} R` : "");
+  };
 }
 
 /* ---------- Claude (opzionale) ---------- */
@@ -671,6 +702,10 @@ function drawAutoEq(eq) {
   const X = (i) => ml + i / (eq.length - 1) * (w - ml - mr), Y = (v) => mt + (hi - v) / (hi - lo) * (h - mt - mb);
   c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.textAlign = "left"; niceTicks(lo, hi, 4).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(t.toFixed(1) + "R", w - mr + 6, Y(t) + 4); });
   const last = eq[eq.length - 1][1]; c.strokeStyle = last >= 0 ? css("--green") : css("--red"); c.lineWidth = 2.4; c.beginPath(); eq.forEach((e, i) => (i ? c.lineTo(X(i), Y(e[1])) : c.moveTo(X(i), Y(e[1])))); c.stroke();
+  k.c.canvas._hit = (x) => {
+    const i = Math.max(0, Math.min(eq.length - 1, Math.round((x - ml) / (w - ml - mr) * (eq.length - 1)))), e = eq[i];
+    return `<b>${e[0] > 1e9 ? tIT(e[0], true) : "Segnale " + (i + 1)}</b><br>Totale: <b class="${e[1] >= 0 ? "up" : "down"}">${sgn(e[1])} R</b>` + (i ? `<br>Questo segnale: ${sgn(e[1] - eq[i - 1][1])} R` : "");
+  };
 }
 
 /* ---------- app installabile ---------- */
