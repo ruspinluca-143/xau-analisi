@@ -194,3 +194,13 @@ button:active{transform:scale(.96);opacity:.85}
 /* barre Prezzo/R e BUY/SHORT sopra i grafici: più aria sotto, anche quando vanno a capo */
 .segbar{flex-wrap:wrap;row-gap:10px;margin-bottom:16px}
 .segbar>.row.gap{flex-wrap:wrap;row-gap:8px}
+
+/* "Carica file" centrato come gli altri pulsanti */
+#tab-op label.btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;line-height:1;text-align:center}
+/* riquadri richiudibili */
+.colltitle{cursor:pointer;user-select:none;-webkit-user-select:none}
+.colltitle .chev{display:inline-block;margin-left:8px;font-size:.85em;opacity:.55;transition:transform .15s ease}
+.card.collapsed .colltitle .chev{transform:rotate(-90deg)}
+.card.collapsed>*:not(.collhead){display:none!important}
+.card.collapsed{padding-bottom:12px}
+.card.collapsed .collhead{margin-bottom:0}

@@ -7,7 +7,8 @@
   let T = [], view = { period: "all", sym: "all" };
   try { T = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { T = []; }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(T)); } catch (e) { msg("Memoria piena: non riesco a salvare.", true); } };
-  const num = (x, d = 2) => (x == null || isNaN(x) ? "–" : Number(x).toLocaleString("it-IT", { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const TAX = 0.26, afterTax = (v) => (v > 0 ? v * (1 - TAX) : v); // stima: 26% sul guadagno netto positivo
+  const num = (x, d = 2) => (x == null || isNaN(x) ? "–" : (Number(x) + 0).toLocaleString("it-IT", { minimumFractionDigits: d, maximumFractionDigits: d }));
   const sg = (x) => (x > 0 ? "+" : "") + num(x);
   const cls = (x) => (x > 0 ? "g" : x < 0 ? "r" : "");
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -175,6 +176,100 @@
     pts.forEach((p, i) => (i ? c.lineTo(X(i), Y(p.v)) : c.moveTo(X(i), Y(p.v)))); c.stroke();
     c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText(pts[0].t, ml, h - 4); c.textAlign = "right"; c.fillText(pts[pts.length - 1].t, w - mr, h - 4);
   }
+
+  /* ---------- prospettive: stime dai risultati passati (non sono previsioni) ---------- */
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  const pctile = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))];
+  function weekdaysBetween(a, b) { // giorni lavorativi da a (escluso) a b (incluso), in UTC
+    let n = 0; for (let d = Math.floor(a / 86400000) + 1; d <= Math.floor(b / 86400000); d++) { const w = new Date(d * 86400000).getUTCDay(); if (w >= 1 && w <= 5) n++; } return n;
+  }
+  function projection(pool) {
+    const txt = document.querySelector("#opProjTxt"), note = document.querySelector("#opProjNote"); if (!txt) return;
+    const trades = pool.filter((t) => !t.kind);
+    const clr = (id) => { const cv = document.querySelector(id); if (cv) { const k = setupCanvas(cv); if (k) { k.c.fillStyle = css("--muted"); k.c.font = "13px sans-serif"; k.c.fillText("Servono più operazioni.", 8, 24); } } };
+    if (trades.length < 30) { txt.textContent = "Servono almeno 30 operazioni per fare una stima."; clr("#cvOpProj"); clr("#cvOpProjH"); note.textContent = ""; return; }
+    const nets = trades.map((t) => t.net);
+    const last = Math.max(...pool.map((t) => t.ct)), now = Math.max(Date.now(), last);
+    let st = periodStart(last); const endOf = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, START_DAY - 1, 23, 59, 59); };
+    let ended = now > endOf(st), base, label;
+    if (ended) { st = periodStart(endOf(st) + 86400000); base = 0; label = "prossimo periodo (" + periodLabel(st) + ")"; }
+    else { base = pool.filter((t) => periodStart(t.ct) === st).reduce((a, t) => a + t.net, 0); label = "periodo in corso (" + periodLabel(st) + ")"; }
+    const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
+    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endOf(st)), N = Math.min(600, Math.round(tpd * rem));
+    const R = 1500, rand = rng(12345), paths = [], ends = [], dds = [];
+    const steps = Math.max(2, Math.min(N, 120)), per = N / steps; // punti sul grafico
+    const grid = Array.from({ length: steps + 1 }, () => []);
+    for (let r = 0; r < R; r++) {
+      let cum = base, peak = base, dd = 0, next = 0, k = 0;
+      grid[0].push(base);
+      for (let i = 1; i <= N; i++) {
+        cum += nets[Math.floor(rand() * nets.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum;
+        if (i >= (k + 1) * per - 1e-9 && k < steps) { k++; grid[k].push(cum); }
+      }
+      while (k < steps) { k++; grid[k].push(cum); }
+      ends.push(cum); dds.push(dd);
+    }
+    ends.sort((a, b) => a - b); dds.sort((a, b) => a - b);
+    const band = grid.map((g) => { g.sort((a, b) => a - b); return [pctile(g, 0.1), pctile(g, 0.5), pctile(g, 0.9)]; });
+    const shown = (q) => (q > 0.99 ? "oltre il 99%" : q < 0.01 ? "meno dell'1%" : pct(q));
+    const pos = ends.filter((v) => v > 0).length / R, med = pctile(ends, 0.5), lo = pctile(ends, 0.1), hi = pctile(ends, 0.9);
+    // scenario prudente: stessa variabilità ma nessun vantaggio medio (media per operazione = 0)
+    const mean = nets.reduce((a, b) => a + b, 0) / nets.length, flat = nets.map((v) => v - mean), r2 = rng(777), e0 = [];
+    for (let r = 0; r < 800; r++) { let cum = base; for (let i = 0; i < N; i++) cum += flat[Math.floor(r2() * flat.length)]; e0.push(cum); }
+    e0.sort((a, b) => a - b); const med0 = pctile(e0, 0.5), pos0 = e0.filter((v) => v > 0).length / e0.length, lo0 = pctile(e0, 0.1);
+    txt.innerHTML = `Stima per il <b>${label}</b>. Finora: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato e, con il tuo ritmo (${num(tpd, 1)} operazioni al giorno), circa <b>${N}</b> operazioni.<br>`
+      + `Risultato di fine periodo: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
+      + `Probabilità di chiudere il periodo in positivo: <b>${shown(pos)}</b>. Calo massimo che potresti incontrare nel periodo (95% dei casi): <b>${num(pctile(dds, 0.95), 0)}</b> dal punto più alto.<br>`
+      + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.`;
+    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.`;
+    fan("#cvOpProj", band, base, per);
+    hist("#cvOpProjH", ends);
+  }
+  function fan(id, band, base, per) {
+    const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
+    const ml = 8, mr = 50, mt = 10, mb = 18, ys = band.flatMap((b) => b).concat([0, base]), span = Math.max(...ys) - Math.min(...ys) || 1;
+    const lo = Math.min(...ys) - span * 0.06, hi = Math.max(...ys) + span * 0.06, n = band.length - 1 || 1;
+    const X = (i) => ml + (i / n) * (w - ml - mr), Y = (v) => mt + ((hi - v) / (hi - lo)) * (h - mt - mb);
+    c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.textAlign = "left"; c.lineWidth = 1;
+    niceTicks(lo, hi, 4).forEach((t) => { c.beginPath(); c.moveTo(ml, Y(t)); c.lineTo(w - mr, Y(t)); c.stroke(); c.fillText(num(t, 0), w - mr + 5, Y(t) + 4); });
+    c.beginPath(); band.forEach((b, i) => (i ? c.lineTo(X(i), Y(b[2])) : c.moveTo(X(i), Y(b[2])))); for (let i = band.length - 1; i >= 0; i--) c.lineTo(X(i), Y(band[i][0])); c.closePath();
+    c.fillStyle = "rgba(120,200,160,.22)"; c.fill();
+    c.strokeStyle = css("--green"); c.lineWidth = 2.2; c.beginPath(); band.forEach((b, i) => (i ? c.lineTo(X(i), Y(b[1])) : c.moveTo(X(i), Y(b[1])))); c.stroke();
+    c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(ml, Y(0)); c.lineTo(w - mr, Y(0)); c.stroke(); c.setLineDash([]);
+    c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText("oggi", ml, h - 4); c.textAlign = "right"; c.fillText("fine periodo", w - mr, h - 4);
+  }
+  function hist(id, ends) {
+    const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
+    const B = 24, lo = ends[0], hi = ends[ends.length - 1], bw0 = (hi - lo) / B || 1, cnt = new Array(B).fill(0);
+    ends.forEach((v) => { cnt[Math.min(B - 1, Math.floor((v - lo) / bw0))]++; });
+    const mx = Math.max(...cnt), ml = 8, mr = 8, mt = 10, mb = 18, bw = (w - ml - mr) / B;
+    cnt.forEach((n, i) => { const mid = lo + (i + 0.5) * bw0; c.fillStyle = mid >= 0 ? css("--green") : css("--red"); const bh = (n / mx) * (h - mt - mb); c.fillRect(ml + i * bw + 1, h - mb - bh, bw - 2, bh); });
+    c.fillStyle = css("--muted"); c.font = "11px sans-serif"; c.textAlign = "left"; c.fillText(num(lo, 0), ml, h - 4); c.textAlign = "right"; c.fillText(num(hi, 0), w - mr, h - 4);
+    if (lo < 0 && hi > 0) { const x = ml + ((0 - lo) / (hi - lo)) * (w - ml - mr); c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.beginPath(); c.moveTo(x, mt); c.lineTo(x, h - mb); c.stroke(); c.setLineDash([]); c.textAlign = "center"; c.fillText("0", x, h - 4); }
+  }
+
+  /* ---------- dati veri: calo massimo, serie, giorni migliori e peggiori, dimensione delle operazioni ---------- */
+  function extra(L0) {
+    const el = document.querySelector("#opExtra"); if (!el) return;
+    const L = L0.filter((t) => !t.kind).sort((a, b) => a.ct - b.ct);
+    if (!L.length) { el.innerHTML = '<p class="muted">Nessuna operazione.</p>'; return; }
+    let run = 0, peak = 0, dd = 0, ddFrom = null, ddTo = null, pkT = L[0].ct;
+    L.forEach((t) => { run += t.net; if (run > peak) { peak = run; pkT = t.ct; } if (peak - run > dd) { dd = peak - run; ddFrom = pkT; ddTo = t.ct; } });
+    let w = 0, l = 0, bw = 0, bl = 0; L.forEach((t) => { if (t.net > 0) { w++; l = 0; } else if (t.net < 0) { l++; w = 0; } else { w = 0; l = 0; } bw = Math.max(bw, w); bl = Math.max(bl, l); });
+    const byDay = new Map(); L.forEach((t) => { const k = Math.floor(t.ct / 86400000); const o = byDay.get(k) || { net: 0, n: 0 }; o.net += t.net; o.n++; byDay.set(k, o); });
+    const days = [...byDay.entries()].sort((a, b) => b[1].net - a[1].net), best = days[0], worst = days[days.length - 1];
+    const pos = days.filter((d) => d[1].net > 0).length;
+    const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
+    const sizes = [["fino a 0,02 lotti", (v) => v != null && v <= 0.02], ["0,03 – 0,04 lotti", (v) => v != null && v > 0.02 && v < 0.05], ["0,05 lotti o più", (v) => v != null && v >= 0.05]];
+    el.innerHTML = '<div class="statrow">'
+      + box("Calo massimo", num(-dd, 2), dd ? "r" : "") + box("Serie vinte (max)", bw) + box("Serie perse (max)", bl)
+      + box("Giorni operativi", byDay.size) + box("Giorni in positivo", pct(pos / byDay.size)) + box("Operazioni al giorno", num(L.length / byDay.size, 1))
+      + box("Media al giorno", sg(run / byDay.size), cls(run)) + box("Giorno migliore", `${dd2(best[0])} ${sg(best[1].net)}`, "g") + box("Giorno peggiore", `${dd2(worst[0])} ${num(worst[1].net)}`, worst[1].net < 0 ? "r" : "")
+      + "</div>" + (dd ? `<p class="muted small">Il calo massimo è la discesa più grande dal punto più alto del conto, dal ${dd2(Math.floor(ddFrom / 86400000))} al ${dd2(Math.floor(ddTo / 86400000))}.</p>` : "")
+      + "<div class=\"ctl-label\" style=\"margin-top:8px\">Per dimensione dell'operazione</div>"
+      + sizes.map(([name, f]) => { const x = stats(L.filter((t) => f(t.vol))); return x.n ? `<div class="sigrow"><div class="sr1"><b>${name}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Media <b>${sg(x.exp)}</b></span></div></div>` : ""; }).join("");
+  }
+  const dd2 = (day) => { const d = new Date(day * 86400000); return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
   function barChart(id, items) {
     const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
     if (!items.length) { c.fillStyle = css("--muted"); c.font = "13px sans-serif"; c.fillText("Nessun dato.", 8, 24); return; }
@@ -212,11 +307,13 @@
     const s = stats(L);
     const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
     document.querySelector("#opStats").innerHTML = s.n
-      ? box("Risultato netto", sg(s.net), cls(s.net)) + box("Operazioni", s.n) + box("Vinte", pct(s.win)) +
+      ? box("Risultato netto", sg(s.net), cls(s.net)) + box("Dopo tasse (26%)", sg(afterTax(s.net)), cls(afterTax(s.net))) + box("Operazioni", s.n) + box("Vinte", pct(s.win)) +
         box("Profit factor", s.pf == null ? "–" : s.pf === Infinity ? "∞" : num(s.pf)) + box("Media vincita", sg(s.avgW || 0), "g") + box("Media perdita", num(s.avgL || 0), "r") +
         box("Migliore", sg(s.best), cls(s.best)) + box("Peggiore", num(s.worst), cls(s.worst)) + box("Media a operazione", sg(s.exp), cls(s.exp)) +
         box("Durata media", fdur(s.dur)) + box("Commissioni + swap", num(s.cost), cls(s.cost))
       : '<p class="muted">Nessuna operazione in questo periodo.</p>';
+    document.querySelector("#opTaxNote").textContent = s.n ? (s.net > 0 ? `Tasse stimate: ${num(s.net - afterTax(s.net))} (26% del guadagno netto del periodo). ` : "Periodo in perdita: nessuna tassa stimata. ") + "È una stima indicativa: la tassazione vera dipende dalla tua situazione (per esempio dalla compensazione delle perdite)." : "";
+    extra(L);
     // curva
     let run = 0; const curve = L.map((t) => ({ v: (run += t.net), t: dd(t.ct) }));
     lineChart("#cvOpEq", curve);
@@ -236,8 +333,9 @@
     // confronto periodi
     document.querySelector("#opPeriods").innerHTML = starts.map((st) => {
       const x = stats(pool.filter((t) => periodStart(t.ct) === st));
-      return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
+      return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
+    projection(pool);
     barChart("#cvOpPer", [...starts].reverse().map((st) => ({ t: MESI[new Date(st).getUTCMonth()], v: stats(pool.filter((t) => periodStart(t.ct) === st)).net })));
     // elenco
     document.querySelector("#opList").innerHTML = [...L].reverse().slice(0, 60).map((t) => t.kind === "adj"
