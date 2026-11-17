@@ -278,8 +278,12 @@ def _tick_worker():
     buf = io.StringIO()
     try:
         import notify as N
+        try:
+            cal = api_calendar({}).get("events")
+        except Exception:  # noqa: BLE001  (senza calendario si fanno comunque i segnali)
+            cal = None
         with contextlib.redirect_stdout(buf):
-            N.run(os.environ.get("NTFY_TOPIC", "").strip())
+            N.run(os.environ.get("NTFY_TOPIC", "").strip(), cal)
         TICK["result"] = buf.getvalue().strip().splitlines()[-1:] or ["ok"]
     except Exception as exc:  # noqa: BLE001
         TICK["result"] = ["errore: %s" % exc]

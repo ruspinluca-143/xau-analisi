@@ -189,7 +189,72 @@ def main():
     return run()
 
 
-def run(topic=None):
+REM_FILE = os.path.join(os.path.dirname(LOG_FILE) or ".", "reminders.json")
+REM_CUR = [c.strip().upper() for c in os.environ.get("CAL_CUR", "USD,EUR,GBP").split(",") if c.strip()]  # valute per cui avvisare prima di una notizia rossa ("ALL" = tutte)
+
+
+def _load_rem():
+    try:
+        with open(REM_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_rem(d):
+    cut = time.time() - 3 * 86400
+    d = {k: v for k, v in d.items() if v > cut}
+    try:
+        with open(REM_FILE, "w", encoding="utf-8") as fh:
+            json.dump(d, fh)
+    except OSError:
+        pass
+
+
+def reminders(events, now_u, now_ts, can_send):
+    """Promemoria sul telefono: (1) ogni mattina alle 7:00 ora italiana 'carica l'email'; (2) 30 minuti prima di ogni notizia rossa
+    (USD, EUR, GBP). Ogni promemoria parte una volta sola."""
+    done, sent, changed = _load_rem(), 0, False
+    loc = E.to_local("rome", now_u)
+    k = "mattina|" + loc.strftime("%Y-%m-%d")
+    if 7 <= loc.hour < 10 and k not in done:
+        print("Promemoria delle 7: carica l'email di Vantage")
+        if can_send:
+            try:
+                send("Buongiorno - carica l'email di Vantage", "Apri l'email giornaliera di Vantage, copia il testo e incollalo nell'app: Operazioni, Incolla testo, Importa. Così le operazioni di ieri sono registrate e le statistiche tornano esatte.", "memo")
+                done[k] = now_ts; changed = True; sent += 1
+            except Exception as exc:  # noqa: BLE001
+                print("  promemoria non inviato: %s" % exc)
+    groups = {}
+    for e in events or []:
+        dt = e["ts"] - now_ts
+        if 0 < dt <= 1800 and (not REM_CUR or "ALL" in REM_CUR or e.get("country", "").upper() in REM_CUR):
+            groups.setdefault(e["ts"], []).append(e)
+    for ts, evs in sorted(groups.items()):
+        k = "evento|%d" % ts
+        if k in done:
+            continue
+        mins = max(1, int((ts - now_ts) / 60))
+        cur = "/".join(sorted({e.get("country", "") for e in evs}))
+        title = "NOTIZIA ROSSA tra %d min - %s ore %s" % (mins, cur, E.hhmm_it(ts))
+        lines = []
+        for e in evs:
+            extra = ", ".join(x for x in ("previsto " + e["forecast"] if e.get("forecast") else "", "prima " + e["previous"] if e.get("previous") else "") if x)
+            lines.append("%s (%s)%s" % (e.get("title", ""), e.get("country", ""), " - " + extra if extra else ""))
+        body = "\n".join(lines) + "\nL'oro puo' muoversi molto e in fretta: valuta di non operare nei minuti attorno alla notizia."
+        print("Promemoria notizia: %s | %s" % (title, "; ".join(lines)))
+        if can_send:
+            try:
+                send(title.encode("ascii", "ignore").decode("ascii"), body, "rotating_light")
+                done[k] = now_ts; changed = True; sent += 1
+            except Exception as exc:  # noqa: BLE001
+                print("  promemoria non inviato: %s" % exc)
+    if changed:
+        _save_rem(done)
+    return sent
+
+
+def run(topic=None, calendar=None):
     global TOPIC
     if topic is not None:
         TOPIC = topic
@@ -206,6 +271,10 @@ def run(topic=None):
             print("Messaggio di prova inviato.")
         except Exception as exc:  # noqa: BLE001
             print("Invio di prova non riuscito: %s" % exc)
+    try:
+        reminders(calendar, now_u, now_ts, can_send)
+    except Exception as exc:  # noqa: BLE001
+        print("Promemoria non riusciti: %s" % exc)
     try:
         bars, _ = E.get_bars(ys, "5m", now_ts)
     except Exception as exc:  # noqa: BLE001
