@@ -192,27 +192,42 @@
     const nets = trades.map((t) => t.net);
     const last = Math.max(...pool.map((t) => t.ct)), now = Math.max(Date.now(), last);
     let st = periodStart(last); const endOf = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, START_DAY - 1, 23, 59, 59); };
-    const M = +view.horizon || 1, endH = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + M, START_DAY - 1, 23, 59, 59); };
+    const M = horizonMonths(), endH = (s0) => { const a = new Date(s0); return Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + M, START_DAY - 1, 23, 59, 59); };
     const dl = (ms) => { const d = new Date(ms); return `${d.getUTCDate()} ${MESI[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
-    const endWord = M === 1 ? "periodo" : M === 3 ? "trimestre" : "anno";
+    const endWord = M === 1 ? "periodo" : M === 3 ? "trimestre" : M === 12 ? "anno" : M / 12 + " anni", endPhrase = M <= 12 ? "di fine " + endWord : "fra " + endWord;
     let ended = now > endOf(st), base, label;
     if (ended) { st = periodStart(endOf(st) + 86400000); base = 0; label = "prossimo periodo (" + periodLabel(st) + ")"; }
     else { base = pool.filter((t) => periodStart(t.ct) === st).reduce((a, t) => a + t.net, 0); label = "periodo in corso (" + periodLabel(st) + ")"; }
     const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
-    if (M > 1) label = (ended ? "prossimi " : "") + (M === 3 ? "tre periodi" : "dodici periodi") + " (" + dl(st) + " – " + dl(endH(st)) + ")";
-    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endH(st)), N = Math.min(6000, Math.round(tpd * rem));
-    const R = 1500, rand = rng(12345), paths = [], ends = [], dds = [];
+    if (M > 1) label = (ended || M > 12 ? "prossimi " : "") + (M === 3 ? "tre periodi" : M === 12 ? "dodici periodi" : M / 12 + " anni") + " (" + dl(st) + " – " + dl(endH(st)) + ")";
+    const from = ended ? st - 86400000 : now, rem = weekdaysBetween(from, endH(st)), N = Math.round(tpd * rem);
+    const R = 1500, rand = rng(12345), ends = [], dds = [], long = N > 6000;
+    const mu = nets.reduce((a, b) => a + b, 0) / nets.length, sd = Math.sqrt(nets.reduce((a, b) => a + (b - mu) * (b - mu), 0) / Math.max(1, nets.length - 1));
+    const gauss = () => { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
     const steps = Math.max(2, Math.min(N, 120)), per = N / steps; // punti sul grafico
     const grid = Array.from({ length: steps + 1 }, () => []);
-    for (let r = 0; r < R; r++) {
-      let cum = base, peak = base, dd = 0, next = 0, k = 0;
-      grid[0].push(base);
-      for (let i = 1; i <= N; i++) {
-        cum += nets[Math.floor(rand() * nets.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum;
-        if (i >= (k + 1) * per - 1e-9 && k < steps) { k++; grid[k].push(cum); }
+    if (!long) { // fino a ~6000 operazioni: si rimescolano davvero le tue operazioni
+      for (let r = 0; r < R; r++) {
+        let cum = base, peak = base, dd = 0, k = 0;
+        grid[0].push(base);
+        for (let i = 1; i <= N; i++) {
+          cum += nets[Math.floor(rand() * nets.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum;
+          if (i >= (k + 1) * per - 1e-9 && k < steps) { k++; grid[k].push(cum); }
+        }
+        while (k < steps) { k++; grid[k].push(cum); }
+        ends.push(cum); dds.push(dd);
       }
-      while (k < steps) { k++; grid[k].push(cum); }
-      ends.push(cum); dds.push(dd);
+    } else { // orizzonti lunghi (anni): somma di moltissime operazioni = media e variabilità dei tuoi risultati, a passi
+      const Sx = Math.min(N, 480), m = N / Sx, every = Sx / steps;
+      for (let r = 0; r < R; r++) {
+        let cum = base, peak = base, dd = 0, k = 0; grid[0].push(base);
+        for (let i = 1; i <= Sx; i++) {
+          cum += mu * m + sd * Math.sqrt(m) * gauss(); if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum;
+          if (i >= (k + 1) * every - 1e-9 && k < steps) { k++; grid[k].push(cum); }
+        }
+        while (k < steps) { k++; grid[k].push(cum); }
+        ends.push(cum); dds.push(dd);
+      }
     }
     ends.sort((a, b) => a - b); dds.sort((a, b) => a - b);
     const band = grid.map((g) => { g.sort((a, b) => a - b); return [pctile(g, 0.1), pctile(g, 0.5), pctile(g, 0.9)]; });
@@ -220,14 +235,14 @@
     const pos = ends.filter((v) => v > 0).length / R, med = pctile(ends, 0.5), lo = pctile(ends, 0.1), hi = pctile(ends, 0.9);
     // scenario prudente: stessa variabilità ma nessun vantaggio medio (media per operazione = 0)
     const mean = nets.reduce((a, b) => a + b, 0) / nets.length, flat = nets.map((v) => v - mean), r2 = rng(777), e0 = [];
-    for (let r = 0; r < 800; r++) { let cum = base; for (let i = 0; i < N; i++) cum += flat[Math.floor(r2() * flat.length)]; e0.push(cum); }
+    for (let r = 0; r < 800; r++) { let cum = base; if (long) { cum += sd * Math.sqrt(N) * gauss(); } else { for (let i = 0; i < N; i++) cum += flat[Math.floor(r2() * flat.length)]; } e0.push(cum); }
     e0.sort((a, b) => a - b); const med0 = pctile(e0, 0.5), pos0 = e0.filter((v) => v > 0).length / e0.length, lo0 = pctile(e0, 0.1);
     txt.innerHTML = `Stima per ${M === 1 ? "il" : "i"} <b>${label}</b>. ${M > 1 ? "Finora nel periodo in corso" : "Finora"}: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato e, con il tuo ritmo (${num(tpd, 1)} operazioni al giorno), circa <b>${N}</b> operazioni.<br>`
-      + `Risultato di fine ${endWord}: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
+      + `Risultato ${endPhrase}: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
       + `Probabilità di chiudere il periodo in positivo: <b>${shown(pos)}</b>. Calo massimo che potresti incontrare nel periodo (95% dei casi): <b>${num(pctile(dds, 0.95), 0)}</b> dal punto più alto.<br>`
-      + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.`;
-    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "");
-    fan("#cvOpProj", band, base, per, "fine " + endWord);
+      + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.` + (M > 12 ? `<br><b>Attenzione:</b> su ${M / 12} anni questi importi sono solo un calcolo aritmetico (stesso ritmo e stessi lotti per sempre), non una previsione di quanto guadagnerai.` : "");
+    note.textContent = `Stima fatta rimescolando 1.500 volte le tue ${trades.length} operazioni (${days} giorni di operatività). Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "") + (M > 12 ? " Per più anni il calcolo usa la media e la variabilità dei tuoi risultati (non rimescola ogni singola operazione), con lotti costanti: non considera reinvestimento, inflazione, cambi di strategia né periodi in cui non operi." : "");
+    fan("#cvOpProj", band, base, per, M <= 12 ? "fine " + endWord : endWord);
     hist("#cvOpProjH", ends);
   }
   function fan(id, band, base, per, endLabel) {
@@ -277,6 +292,51 @@
       + sizes.map(([name, f]) => { const x = stats(L.filter((t) => f(t.vol))); return x.n ? `<div class="sigrow"><div class="sr1"><b>${name}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Media <b>${sg(x.exp)}</b></span></div></div>` : ""; }).join("");
   }
   const dd2 = (day) => { const d = new Date(day * 86400000); return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
+
+  /* ---------- che lotto usare: in base ai soldi sul conto e a come operi davvero ---------- */
+  const LKEY = "xau_lotto";
+  let LOT = { cap: "", dd: "20" };
+  try { LOT = Object.assign(LOT, JSON.parse(localStorage.getItem(LKEY) || "{}")); } catch (e) { /* senza: valori di partenza */ }
+  const saveLot = () => { try { localStorage.setItem(LKEY, JSON.stringify(LOT)); } catch (e) { /* senza: funziona uguale */ } };
+  function lotAdvice(pool) {
+    const el = document.querySelector("#opLot"); if (!el) return;
+    const capEl = document.querySelector("#opCap"), ddEl = document.querySelector("#opDdLim");
+    if (capEl && document.activeElement !== capEl) capEl.value = LOT.cap;
+    if (ddEl) ddEl.value = LOT.dd;
+    const trades = pool.filter((t) => !t.kind && t.vol > 0);
+    if (trades.length < 30) { el.innerHTML = '<p class="muted">Servono almeno 30 operazioni con la dimensione (lotti) per dare un consiglio.</p>'; return; }
+    const cap = parseFloat(String(LOT.cap).replace(",", ".")), ddPct = (+LOT.dd || 20) / 100;
+    const u = trades.map((t) => t.net / (t.vol / 0.01)); // risultato di ogni operazione se fosse stata di 0,01 lotti
+    const worstU = Math.min(...u), vols = trades.map((t) => t.vol).sort((a, b) => a - b);
+    const q = (a, f) => a[Math.min(a.length - 1, Math.max(0, Math.round(f * (a.length - 1))))];
+    const days = new Set(trades.map((t) => Math.floor(t.ct / 86400000))).size, tpd = trades.length / Math.max(1, days);
+    const N = Math.max(10, Math.round(tpd * 21)), rand = rng(4242), fin = [], dds = [];
+    for (let r = 0; r < 1200; r++) { let cum = 0, peak = 0, dd = 0; for (let i = 0; i < N; i++) { cum += u[Math.floor(rand() * u.length)]; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; } fin.push(cum); dds.push(dd); }
+    fin.sort((a, b) => a - b); dds.sort((a, b) => a - b);
+    const dd1 = Math.max(q(dds, 0.95), 0.01), med1 = q(fin, 0.5), p101 = q(fin, 0.1), w1 = Math.abs(worstU);
+    const typ = q(vols, 0.5), high = q(vols, 0.9), lf = (x) => num(x, 2);
+    const rows = (lots) => lots.map((L) => {
+      const k = L / 0.01, dd = dd1 * k, wr = w1 * k, okDd = cap > 0 ? dd <= ddPct * cap : null, okTr = cap > 0 ? wr <= 0.05 * cap : null;
+      const tone = cap > 0 ? (okDd && okTr ? "green" : okDd || okTr ? "amber" : "red") : "";
+      return `<div class="sigrow"><div class="sr1"><b>${lf(L)} lotti</b><span class="pill ${tone}" style="margin-left:auto">${cap > 0 ? (okDd && okTr ? "dentro i limiti" : okDd || okTr ? "al limite" : "troppo grande") : ""}</span></div>
+        <div class="sr2"><span>Calo massimo in un periodo (95%) <b>${num(dd, 0)}</b>${cap > 0 ? ` (${pct(dd / cap)})` : ""}</span><span>Perdita peggiore vista su una operazione <b>${num(wr, 0)}</b>${cap > 0 ? ` (${pct(wr / cap)})` : ""}</span><span>Risultato mediano del periodo <b class="${cls(med1 * k)}">${sg(med1 * k)}</b></span></div></div>`;
+    }).join("");
+    const base = [0.01, 0.02, 0.03, 0.05, 0.1];
+    if (!(cap > 0)) {
+      el.innerHTML = `<p class="small">Scrivi qui sopra quanti soldi <b>tuoi</b> hai sul conto (senza credito o bonus del broker) e ti dico quale lotto è coerente con come operi. Intanto, sui tuoi risultati passati:</p>`
+        + `<p class="small">Il tuo lotto abituale è <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}). Ogni 0,01 lotti, in un periodo di circa ${N} operazioni, hanno dato un calo massimo di <b>${num(dd1, 0)}</b> (95% dei casi) e la peggiore operazione ha perso <b>${num(w1, 0)}</b>.</p>` + rows(base);
+      return;
+    }
+    const lotDD = Math.floor((ddPct * cap) / dd1), lotTr = Math.floor((0.05 * cap) / w1), recU = Math.max(1, Math.min(lotDD, lotTr)), rec = recU * 0.01;
+    const bind = lotTr < lotDD ? "la perdita di una singola operazione (non più del 5% del capitale)" : "il calo massimo che accetti nel periodo";
+    const set = [...new Set([...base, rec, Math.round(typ * 100) / 100].map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b);
+    const tk = typ / 0.01, ddT = dd1 * tk, wT = w1 * tk;
+    el.innerHTML = `<div class="stat" style="margin-bottom:10px"><span>Lotto consigliato</span><b class="g">${lf(rec)}</b></div>`
+      + `<p class="small">Con <b>${num(cap, 0)}</b> di capitale, accettando un calo massimo del <b>${pct(ddPct)}</b> (${num(ddPct * cap, 0)}) e una perdita su singola operazione non oltre il <b>5%</b> (${num(0.05 * cap, 0)}), in base a come hai operato finora il lotto massimo coerente è <b>${lf(rec)}</b>. A pesare di più è ${bind}.</p>`
+      + `<p class="small">Tu usi di solito <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}): con quel lotto il calo massimo atteso in un periodo (95% dei casi) è <b>${num(ddT, 0)}</b> (${pct(ddT / cap)}), e un'operazione andata male come la peggiore vista varrebbe <b>${num(wT, 0)}</b> (${pct(wT / cap)} del capitale).</p>`
+      + rows(set)
+      + `<p class="muted small">Calcolo sui tuoi ${trades.length} risultati passati (${days} giorni), rapportati a ogni 0,01 lotti: i numeri crescono in proporzione al lotto. Non è un consiglio finanziario. Se spesso tieni aperte posizioni senza stop, la perdita vera può essere più grande di quella vista. Controlla anche il margine richiesto dal broker: con lotti grandi e poco capitale il margine libero si consuma in fretta. Il credito o bonus non è tuo capitale: non contarlo.</p>`;
+  }
   function barChart(id, items) {
     const cv = document.querySelector(id); if (!cv) return; const k = setupCanvas(cv); if (!k) return; const { c, w, h } = k;
     if (!items.length) { c.fillStyle = css("--muted"); c.font = "13px sans-serif"; c.fillText("Nessun dato.", 8, 24); return; }
@@ -345,6 +405,7 @@
       return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
     projection(pool);
+    lotAdvice(pool);
     barChart("#cvOpPer", [...starts].reverse().map((st) => { const x = stats(pool.filter((t) => periodStart(t.ct) === st)); return { t: periodLabel(st), v: x.net, d: `${x.n} operazioni · vinte ${pct(x.win)}<br>Dopo tasse ${sg(afterTax(x.net))}` }; }));
     // elenco
     document.querySelector("#opList").innerHTML = [...L].reverse().slice(0, 60).map((t) => t.kind === "adj"
@@ -357,13 +418,22 @@
   const hm = (ms) => { const d = new Date(ms); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); };
 
   /* ---------- comandi ---------- */
+  function horizonMonths() {
+    if (view.horizon === "custom") { const el = document.querySelector("#opProjYears"), y = Math.max(1, Math.min(40, Math.round(+(el && el.value) || 10))); return y * 12; }
+    return +view.horizon || 1;
+  }
   function buildProjSeg() {
     const el = document.querySelector("#opProjSeg"); if (!el || typeof seg !== "function") return;
-    seg(el, [{ label: "Mensile", value: "1" }, { label: "Trimestrale", value: "3" }, { label: "Annuale", value: "12" }], view.horizon || "1", (v) => { view.horizon = v; buildProjSeg(); render(); });
+    seg(el, [{ label: "Mensile", value: "1" }, { label: "Trimestrale", value: "3" }, { label: "Annuale", value: "12" }, { label: "3 anni", value: "36" }, { label: "5 anni", value: "60" }, { label: "Scegli…", value: "custom" }], view.horizon || "1", (v) => { view.horizon = v; buildProjSeg(); render(); });
+    const box = document.querySelector("#opProjYearsBox"); if (box) box.hidden = view.horizon !== "custom";
   }
   function init() {
     const f = document.querySelector("#opFile"); if (!f) return;
     buildProjSeg();
+    const yrs = document.querySelector("#opProjYears"); if (yrs) yrs.oninput = () => { if (yrs.value !== "" && (+yrs.value < 1 || +yrs.value > 40)) yrs.value = Math.max(1, Math.min(40, +yrs.value)); render(); };
+    const capEl = document.querySelector("#opCap"), ddEl = document.querySelector("#opDdLim");
+    if (capEl) capEl.oninput = () => { LOT.cap = capEl.value; saveLot(); render(); };
+    if (ddEl) ddEl.onchange = () => { LOT.dd = ddEl.value; saveLot(); render(); };
     f.onchange = async () => {
       for (const file of f.files) { try { importText(decode(await file.arrayBuffer())); } catch (e) { msg("Non riesco a leggere il file: " + e.message, true); } }
       f.value = "";

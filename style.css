@@ -216,3 +216,10 @@ canvas.cv{cursor:pointer}
 .chartinfo .g,.chartinfo .up{color:var(--green)}.chartinfo .r,.chartinfo .down{color:var(--red)}
 .chartinfo .muted{color:var(--muted)}
 .chartinfo-x{position:absolute;top:4px;right:6px;background:none;border:0;color:var(--muted);font-size:14px;cursor:pointer;padding:4px}
+
+/* prospettive lunghe e consiglio sul lotto */
+#opProjSeg{flex-wrap:wrap;border-radius:16px}
+#tab-op input[type=number]{background:var(--soft);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:13px;font-weight:600;width:110px;max-width:100%}
+#tab-op label.small{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-weight:600}
+#opProjYearsBox{flex-direction:row!important;align-items:center;gap:8px!important;margin:4px 0}
+#opProjYearsBox[hidden]{display:none!important}

@@ -159,10 +159,16 @@
       <div class="card"><h3>Per giorno della settimana</h3><canvas id="cvOpWd" class="cv short"></canvas><h3 style="margin-top:14px">Per ora di apertura</h3><canvas id="cvOpHr" class="cv short"></canvas><p class="muted small">Orario del server del tuo broker, come nel rapporto. L'apertura è abbinata alla chiusura per verso e dimensione: se l'apertura è di un periodo non caricato, conta l'orario di chiusura.</p></div>
       <div class="card"><h3>Prospettive (stime, non previsioni)</h3>
         <div class="row gap" style="margin:6px 0"><div class="seg small" id="opProjSeg"></div></div>
+        <label class="small" id="opProjYearsBox" hidden>Quanti anni (da 1 a 40): <input id="opProjYears" type="number" inputmode="numeric" min="1" max="40" step="1" value="10"></label>
         <p class="small" id="opProjTxt"></p>
         <div class="ctl-label">Come potrebbe andare da oggi a fine periodo (fascia = 80% dei casi)</div><canvas id="cvOpProj" class="cv short"></canvas>
         <div class="ctl-label" style="margin-top:12px">Dove potrebbe chiudere il periodo</div><canvas id="cvOpProjH" class="cv short"></canvas>
         <p class="muted small" id="opProjNote"></p></div>
+      <div class="card"><h3>Che lotto usare</h3>
+        <p class="muted small">Ti propongo un lotto in base ai soldi che hai e a come hai davvero operato (risultati, perdite peggiori, ritmo).</p>
+        <div class="row gap"><label class="small">Capitale sul conto (€) <input id="opCap" type="number" inputmode="decimal" min="0" placeholder="es. 7000"></label>
+        <label class="small">Calo massimo accettato <select id="opDdLim"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option></select></label></div>
+        <div id="opLot" style="margin-top:10px"></div></div>
       <div class="card"><h3>Confronto tra periodi</h3><canvas id="cvOpPer" class="cv short"></canvas><div id="opPeriods"></div></div>
       <div class="card"><h3>Ultime operazioni</h3><div id="opList"></div>
         <div class="row gap" style="margin-top:10px"><button class="btn" id="opExport">Esporta CSV</button><button class="btn" id="opClear">Cancella dati</button></div></div>
