@@ -291,8 +291,18 @@ def _tick_worker():
         TICK["running"] = False
 
 
+def api_scan(q):
+    import scanner as SC
+    return SC.snapshot()
+
+
 def api_tick(q):
     """Controllo dei segnali + avvisi ntfy. Lo chiama un servizio esterno ogni minuto (sveglia anche il server)."""
+    try:  # scanner di titoli e cripto: parte da solo quando è ora (vedi scanner.due)
+        import scanner as SC
+        SC.maybe_start()
+    except Exception:  # noqa: BLE001  (se non parte, i segnali sull'oro vanno avanti lo stesso)
+        pass
     with TICK_LOCK:
         now = time.time()
         if TICK["running"] or now - TICK["last"] < 45:
@@ -423,7 +433,7 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
-ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar}
+ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan}
 POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")

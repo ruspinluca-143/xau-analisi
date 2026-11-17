@@ -1,0 +1,235 @@
+"""Scanner di titoli e cripto: cerca i segnali di breakout con vantaggio dimostrato (solo analisi, nessun ordine).
+
+Controlla una lista di circa 100 simboli (grandi titoli USA e cripto principali) sul giornaliero e sull'ora, buy e short, con tutti i target
+da 1R a 5R. Un segnale entra nell'elenco solo se simulazione e storico concordano (come per l'oro). Due livelli: "netto" = almeno 20 casi storici e R medio
+sopra 2 volte l'errore statistico (più severo, perché guardando tanti simboli qualche falso segnale capita per caso); "possibile" = il criterio normale
+dell'oro (almeno 10 casi, R medio sopra l'errore statistico). Gli avvisi sul telefono partono solo per il livello "netto".
+
+    python scanner.py --dry --limit 10    prova su 10 simboli, senza salvare né inviare
+    python scanner.py                     scansione completa di giornaliero e ora
+"""
+import json
+import os
+import sys
+import threading
+import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import engine as E  # noqa: E402
+
+STOCKS = ("AAPL MSFT NVDA AMZN GOOGL META TSLA AVGO COST NFLX AMD PEP ADBE CSCO TMUS CMCSA INTC QCOM TXN AMGN INTU AMAT HON ISRG BKNG SBUX GILD ADI "
+          "VRTX MDLZ REGN LRCX PANW ADP MU KLAC SNPS CDNS PYPL CRWD MELI MAR CSX ORLY ABNB CTAS MRVL NXPI FTNT PCAR WDAY ROP MNST CHTR AEP MCHP PAYX "
+          "ADSK EXC ROST IDXX LULU FAST DDOG EA TEAM DXCM TTD ZS MDB JPM V MA UNH XOM LLY JNJ WMT PG HD ORCL CRM BAC KO MRK ABBV CVX NKE DIS MCD T PFE "
+          "BRK-B GS CAT BA IBM UBER PLTR COIN").split()
+CRYPTO = "BTC-USD ETH-USD SOL-USD XRP-USD BNB-USD DOGE-USD ADA-USD AVAX-USD".split()
+SYMBOLS = STOCKS + CRYPTO
+HOLD = {"1h": 24, "1d": 10}
+REPS = 1500
+MIN_CASES = 20
+SE_MULT = 2.0
+WORKERS = 3
+OUT = os.environ.get("SCAN_FILE", "scan.json")
+TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
+LOCK = threading.Lock()
+STATE = {"running": False, "runs": {}, "signals": {"1d": [], "1h": []}, "seen": [], "errors": {}, "loaded": False}
+
+
+def _load():
+    if STATE["loaded"]:
+        return
+    STATE["loaded"] = True
+    try:
+        with open(OUT, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k in ("runs", "signals", "seen"):
+            if k in d:
+                STATE[k] = d[k]
+    except (OSError, ValueError):
+        pass
+
+
+def _save():
+    try:
+        with open(OUT, "w", encoding="utf-8") as fh:
+            json.dump({"runs": STATE["runs"], "signals": STATE["signals"], "seen": STATE["seen"][-800:]}, fh, ensure_ascii=False, separators=(",", ":"))
+    except OSError:
+        pass
+
+
+def is_crypto(sym):
+    return sym.endswith("-USD")
+
+
+def complete(sym, ts, now_ts):
+    """La barra giornaliera è chiusa? Titoli USA: sessione di 6,5 ore dall'apertura; cripto: 24 ore."""
+    return now_ts >= ts + (86400 if is_crypto(sym) else 23400)
+
+
+def scan_symbol(sym, tf, now_ts):
+    """Segnali freschi con vantaggio netto per un simbolo e un time frame."""
+    ys = E.yahoo_symbol(sym)
+    try:
+        bars, _ = E.get_bars(ys, tf, now_ts)
+        if tf == "1d" and bars and not complete(sym, bars[-1][0], now_ts):
+            bars = bars[:-1]
+        if tf == "1h":
+            bars = bars[-4000:]
+        if len(bars) < 120:
+            return []
+        st = E.build_breakout(bars, tf, E.DEFAULT_RRS, 20, 1.0, HOLD[tf], REPS, 19, True)
+    finally:
+        with E._lock:  # libero la memoria: i dati di centinaia di simboli non devono restare in cache
+            for k in [k for k in E._cache if k[0] == ys]:
+                del E._cache[k]
+    if st.get("error") or "dirs" not in st:
+        return []
+    sec = E.TF[tf][2]
+    out = []
+    for d, r in st["dirs"].items():
+        if r["state"] != "triggered" or r.get("age_bars", 99) > 2:
+            continue
+        best, favs = None, []
+        for rr in E.DEFAULT_RRS:
+            b = r["blocks"].get("%g" % rr)
+            if not b or b["closed"] or not b.get("mc") or b["stance"] != "favorevole":
+                continue
+            h = b["hist"]
+            se = h.get("se")
+            net = h["fired"] >= MIN_CASES and se is not None and h["avg_r"] > SE_MULT * se
+            favs.append([rr, b["target"]])
+            exp = min(b["mc"]["avg_r"], h["avg_r"])
+            if best is None or (net, exp) > (best[4], best[0]):
+                best = (exp, rr, b, h, net)
+        if best:
+            exp, rr, b, h, net = best
+            ts = r["trigger_ts"] - sec
+            out.append({"id": "%s|%s|%s|%d" % (sym, tf, d, ts), "sym": sym, "tf": tf, "dir": d, "rr": rr, "entry": r["entry"], "stop": r["stop"], "target": b["target"],
+                        "entry_ts": ts, "age_bars": r.get("age_bars", 0), "sim_target": round(b["mc"]["target"], 3), "sim_stop": round(b["mc"]["stop"], 3),
+                        "hist_n": h["fired"], "hist_r": round(h["avg_r"], 3), "hist_se": round(h["se"], 3) if h.get("se") is not None else None, "favs": favs, "tier": "netto" if net else "possibile"})
+    return out
+
+
+def _send(title, body, tags):
+    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST",
+                                 headers={"Title": title.encode("ascii", "ignore").decode("ascii"), "Priority": "high", "Tags": tags})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.status
+
+
+def _fmt(x):
+    return ("{:,.2f}".format(x)).replace(",", "X").replace(".", ",").replace("X", ".") if x < 1000 else ("{:,.0f}".format(x)).replace(",", ".")
+
+
+def scan(tfs, limit=None, dry=False):
+    """Scansione completa dei time frame indicati. Restituisce i segnali nuovi."""
+    _load()
+    now_ts = int(time.time())
+    syms = SYMBOLS[:limit] if limit else SYMBOLS
+    new = []
+    for tf in tfs:
+        t0, found, errors = time.time(), [], []
+
+        def one(sym):
+            try:
+                return scan_symbol(sym, tf, now_ts)
+            except Exception as exc:  # noqa: BLE001
+                errors.append("%s: %s" % (sym, str(exc)[:60]))
+                return []
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            for res in ex.map(one, syms):
+                found += res
+        found.sort(key=lambda s: (s["tier"] != "netto", -(s["sim_target"] - s["sim_stop"] + s["hist_r"])))
+        with LOCK:
+            STATE["signals"][tf] = found
+            STATE["runs"][tf] = {"t": now_ts, "checked": len(syms) - len(errors), "errors": len(errors), "secs": int(time.time() - t0),
+                                 "win": STATE["runs"].get(tf, {}).get("win")}
+            STATE["errors"][tf] = errors[:5]
+            if not STATE["runs"][tf]["checked"]:  # fonte non raggiungibile: riprovo tra 10 minuti, non a ogni minuto
+                STATE["runs"][tf]["retry"] = now_ts + 600
+        fresh = [s for s in found if s["id"] not in STATE["seen"]]
+        new += [s for s in fresh if s["tier"] == "netto"]  # avviso sul telefono solo per il livello netto
+        STATE["seen"] += [s["id"] for s in fresh if s["tier"] != "netto"]
+        print("%s: %d simboli controllati, %d errori, %d segnali (%d netti nuovi) in %ds" % (tf, len(syms) - len(errors), len(errors), len(found), len([s for s in fresh if s["tier"] == "netto"]), time.time() - t0))
+    if not dry:
+        sent = 0
+        if TOPIC and new:
+            for s in new[:6]:
+                dn = "BUY" if s["dir"] == "buy" else "SHORT"
+                title = "TITOLO %s - %s %s - target %gR" % (s["sym"], dn, s["tf"], s["rr"])
+                body = ("Segnale con vantaggio dimostrato su %s (%s).\nIngresso %s - Stop %s - Target %s\nSimulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %+.2f.\n"
+                        "Prezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (s["sym"], s["tf"], _fmt(s["entry"]), _fmt(s["stop"]), _fmt(s["target"]),
+                                                                                      s["sim_target"] * 100, s["sim_stop"] * 100, s["hist_n"], s["hist_r"]))
+                try:
+                    _send(title, body, "chart_with_upwards_trend" if s["dir"] == "buy" else "chart_with_downwards_trend")
+                    sent += 1
+                except Exception as exc:  # noqa: BLE001
+                    print("  invio non riuscito: %s" % exc)
+            if len(new) > 6:
+                try:
+                    _send("TITOLI - altri %d segnali" % (len(new) - 6), "Altri segnali con vantaggio: " + ", ".join("%s %s" % (s["sym"], s["tf"]) for s in new[6:20]) + ". Aprili nell'app: Avvisi, Scanner.", "bell")
+                except Exception as exc:  # noqa: BLE001
+                    print("  invio riepilogo non riuscito: %s" % exc)
+        with LOCK:
+            STATE["seen"] += [s["id"] for s in new]
+            _save()
+        print("Notifiche inviate: %d" % sent)
+    return new
+
+
+def due(now=None):
+    """Quali time frame vanno controllati adesso. Giornaliero: dopo la chiusura di Wall Street (>=21:30 UTC) e al mattino (>=06:30 UTC), una volta per finestra.
+    Ora: ogni ora dal lunedì al venerdì tra le 14:00 e le 21:59 UTC. La prima volta in assoluto, tutti e due."""
+    _load()
+    import datetime as dt
+    now = now or dt.datetime.now(dt.timezone.utc)
+    ts, key, hm = int(now.timestamp()), now.strftime("%Y-%m-%d"), now.hour * 60 + now.minute
+    runs, out = STATE["runs"], []
+    win = key + "pm" if hm >= 21 * 60 + 30 else key + "am" if hm >= 6 * 60 + 30 else None
+    wait = lambda k: ts < runs.get(k, {}).get("retry", 0)  # dopo un tentativo senza dati si aspettano 10 minuti
+    if (not runs.get("1d") or (win and runs["1d"].get("win") != win)) and not wait("1d"):
+        out.append(("1d", win))
+    if (not runs.get("1h") or (now.weekday() < 5 and 14 * 60 <= hm < 22 * 60 and ts - runs["1h"].get("t", 0) >= 3300)) and not wait("1h"):
+        out.append(("1h", None))
+    return out
+
+
+def maybe_start():
+    """Chiamata a ogni controllo automatico (ogni minuto): se è ora, avvia la scansione in un thread."""
+    with LOCK:
+        if STATE["running"]:
+            return False
+        todo = due()
+        if not todo:
+            return False
+        STATE["running"] = True
+
+    def work():
+        try:
+            for tf, win in todo:
+                scan([tf])
+                if win and STATE["runs"][tf].get("checked"):
+                    STATE["runs"][tf]["win"] = win
+                    _save()
+        except Exception as exc:  # noqa: BLE001
+            print("Scanner: errore %s" % exc)
+        finally:
+            STATE["running"] = False
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
+def snapshot():
+    _load()
+    sigs = [s for tf in ("1d", "1h") for s in STATE["signals"].get(tf, [])]
+    return {"running": STATE["running"], "runs": STATE["runs"], "signals": sigs, "symbols": len(SYMBOLS), "errors": STATE["errors"]}
+
+
+if __name__ == "__main__":
+    dry = "--dry" in sys.argv
+    lim = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
+    scan(["1d", "1h"], limit=lim, dry=dry)
+    for s in snapshot()["signals"]:
+        print(" ", s["tier"], s["sym"], s["tf"], s["dir"], "%gR" % s["rr"], "ingresso", s["entry"], "stop", s["stop"], "target", s["target"], "sim %.0f%%/%.0f%%" % (s["sim_target"] * 100, s["sim_stop"] * 100), "storico", s["hist_n"], s["hist_r"])
+    print("simboli in lista:", len(SYMBOLS))

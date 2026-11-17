@@ -285,7 +285,7 @@ function initZoom() {
 }
 
 function renderChart() {
-  if (!S.data) return;
+  if (!S.data || !S.ov) return; // cambiando simbolo S.ov resta vuoto finché non arrivano i dati nuovi
   const cv = $("#cvCandles"), k = setupCanvas(cv); if (!k) return;
   const { c, w, h } = k, ch = S.data.chart, bars = ch.bars, n = bars.length;
   $("#chartTitle").textContent = S.ov.name + " · " + S.tf;
