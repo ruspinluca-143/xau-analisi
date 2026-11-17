@@ -41,7 +41,7 @@
   const norm = (s) => String(s).toLowerCase().replace(/[^a-zàèéìòù]/g, "");
   const H = {
     time: ["time", "orario", "ora", "data", "opentime", "closetime"], pos: ["position", "posizione", "ticket", "deal", "order", "ordine"],
-    sym: ["symbol", "simbolo", "item"], type: ["type", "tipo"], dir: ["direction", "direzione"], vol: ["volume", "size", "lots"],
+    sym: ["symbol", "simbolo", "item"], type: ["type", "tipo"], dir: ["direction", "direzione", "entry"], vol: ["volume", "size", "lots"],
     price: ["price", "prezzo"], comm: ["commission", "commissione", "commissioni", "fee"], swap: ["swap"], profit: ["profit", "profitto", "utile"],
     bal: ["balance", "saldo"],
   };
@@ -74,14 +74,21 @@
     const T_ = idxs(hdr, H.time), P_ = idxs(hdr, H.price), pos = idxs(hdr, H.pos)[0], sym = idxs(hdr, H.sym)[0], typ = idxs(hdr, H.type)[0];
     const dirc = idxs(hdr, H.dir)[0], vol = idxs(hdr, H.vol)[0], comm = idxs(hdr, H.comm)[0], swp = idxs(hdr, H.swap)[0], pr = idxs(hdr, H.profit).slice(-1)[0];
     const deals = dirc != null; // elenco "Operazioni" (deal) invece di "Posizioni"
+    const openQ = {}; // deal di apertura non ancora abbinati: simbolo|direzione|volume -> [{t, p}]
     for (let r = hi + 1; r < rows.length; r++) {
-      const c = rows[r]; if (c.length < hdr.length - 2) continue;
+      const c = rows[r];
+      if (/^(positions|posizioni|working orders|ordini|a\/c summary|orders)/i.test((c[0] || "").trim())) break; // fine della tabella
+      if (c.length < hdr.length - 2) continue;
       const ty = norm(c[typ] || ""); if (ty !== "buy" && ty !== "sell") continue;
       const profit = parseNum(c[pr]); if (isNaN(profit)) continue;
       let ot, ct, op, cp, dir = ty;
       if (deals) {
-        const d = norm(c[dirc] || ""); if (!d.includes("out")) continue; // conta solo la chiusura
-        ct = parseTime(c[T_[0]]); ot = ct; cp = parseNum(c[P_[0]]); op = cp; dir = ty === "buy" ? "sell" : "buy"; // chiusura di un buy = sell
+        const d = norm(c[dirc] || ""), qk = String(c[sym] || "").toUpperCase() + "|" + ty + "|" + (vol != null ? parseNum(c[vol]) : "");
+        if (d === "in") { (openQ[qk] = openQ[qk] || []).push({ t: parseTime(c[T_[0]]), p: parseNum(c[P_[0]]) }); continue; } // apertura: la ricordo
+        if (!d.includes("out")) continue; // conta solo la chiusura
+        ct = parseTime(c[T_[0]]); cp = parseNum(c[P_[0]]); dir = ty === "buy" ? "sell" : "buy"; // chiusura di un buy = sell
+        const q = openQ[String(c[sym] || "").toUpperCase() + "|" + dir + "|" + (vol != null ? parseNum(c[vol]) : "")], o = q && q.length ? q.shift() : null;
+        ot = o ? o.t : ct; op = o ? o.p : cp;
       } else {
         if (T_.length < 2 || P_.length < 2) continue;
         ot = parseTime(c[T_[0]]); ct = parseTime(c[T_[1]]); op = parseNum(c[P_[0]]); cp = parseNum(c[P_[1]]);
@@ -98,7 +105,7 @@
     const r = parseReport(text);
     if (r.error) return msg(r.error, true);
     const have = new Map(T.map((t) => [t.id, t])); let nuove = 0;
-    r.trades.forEach((t) => { if (!have.has(t.id)) nuove++; have.set(t.id, t); });
+    r.trades.forEach((t) => { if (!have.has(t.id)) { nuove++; have.set(t.id, t); } }); // le operazioni già salvate non si toccano
     T = [...have.values()].sort((a, b) => a.ct - b.ct); save();
     msg(`Letto: ${r.trades.length} operazioni, di cui ${nuove} nuove (le altre c'erano già).`);
     render();
@@ -225,7 +232,9 @@
     document.querySelector("#opSym").onchange = (e) => { view.sym = e.target.value; render(); };
     document.querySelector("#opClear").onclick = () => { if (confirm("Cancello tutte le operazioni salvate su questo telefono?")) { T = []; save(); view = { period: "all", sym: "all" }; msg("Dati cancellati."); render(); } };
     document.querySelector("#opExport").onclick = () => {
-      const csv = "chiusura;simbolo;tipo;volume;apertura;chiusura_prezzo;commissione;swap;profitto;netto\n" + T.map((t) => [new Date(t.ct).toISOString(), t.sym, t.dir, t.vol, t.op, t.cp, t.comm, t.swap, t.profit, t.net].join(";")).join("\n");
+      const f2 = (ms) => { const d = new Date(ms), z = (n) => String(n).padStart(2, "0"); return `${d.getUTCFullYear()}.${z(d.getUTCMonth() + 1)}.${z(d.getUTCDate())} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}:${z(d.getUTCSeconds())}`; };
+      // stesso formato che l'importazione sa leggere: serve per portare i dati su un altro telefono senza duplicati
+      const csv = "Orario;Posizione;Simbolo;Tipo;Volume;Prezzo;S / L;T / P;Orario;Prezzo;Commissione;Swap;Profitto\n" + T.map((t) => [f2(t.ot), String(t.id).split("#").pop(), t.sym, t.dir, t.vol, t.op, 0, 0, f2(t.ct), t.cp, t.comm, t.swap, t.profit].join(";")).join("\n");
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "mie-operazioni.csv"; a.click();
     };
     new MutationObserver(() => { if (document.body.dataset.tab === "op") setTimeout(render, 160); }).observe(document.body, { attributes: true, attributeFilter: ["data-tab"] });

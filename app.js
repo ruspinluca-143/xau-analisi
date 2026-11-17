@@ -458,12 +458,12 @@ async function pollSignals(show) {
     if (S.spot) q.set("spot", S.spot);
     const r = await api("/api/signals?" + q.toString());
     const list = (r.signals || []).filter((s) => AL.stance === "all" ? s.stance !== "sfavorevole" : s.stance === "favorevole");
-    renderSignals(r.signals || []);
+    renderSignals(list); // rispetta la scelta "quando avvisarmi": con 'solo favorevoli' non compare altro
     const jr = loadLocalJournal(); let added = false;
-    (r.signals || []).forEach((s) => { if (!jr.some((x) => x.id === s.id)) { jr.push(Object.assign({}, s, { status: "open", r: null })); added = true; } });
+    list.forEach((s) => { if (!jr.some((x) => x.id === s.id)) { jr.push(Object.assign({}, s, { status: "open", r: null })); added = true; } });
     if (added) saveLocalJournal(jr);
     const hh = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
-    $("#alDiag").innerHTML = `Ultimo controllo alle <b>${hh}</b> su: ${tfs.join(", ")} (${setups.join(", ")}) con target ${S.rr}R. Segnali freschi: <b>${(r.signals || []).length}</b>, di cui da notificare: <b>${list.length}</b>. Avvisi: <b>${AL.on ? "ATTIVI" : "SPENTI (nessun suono né notifica)"}</b>.${(r.errors || []).length ? " Errori: " + r.errors.join("; ") : ""}`;
+    $("#alDiag").innerHTML = `Ultimo controllo alle <b>${hh}</b> su: ${tfs.join(", ")} (${setups.join(", ")}) con target ${S.rr}R. Segnali freschi: <b>${(r.signals || []).length}</b>, di cui ${AL.stance === "all" ? "con un giudizio utile" : "favorevoli"}: <b>${list.length}</b>. Avvisi: <b>${AL.on ? "ATTIVI" : "SPENTI (nessun suono né notifica)"}</b>.${(r.errors || []).length ? " Errori: " + r.errors.join("; ") : ""}`;
     if (AL.on) list.forEach((s) => {
       if (seen.has(s.id)) return; seen.add(s.id);
       const t = `${s.dir === "buy" ? "BUY" : "SHORT"} ${s.symbol} · ${s.label}`;
@@ -653,15 +653,13 @@ function sigRows(items) {
 function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
-  if (!AUTO.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale registrato. Il controllo automatico li salva man mano che compaiono (anche quelli non favorevoli, col loro giudizio).</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
-  const closed = AUTO.filter((x) => ["target", "stop", "none"].includes(x.status)), fav = closed.filter((x) => x.stance === "favorevole");
-  const open = AUTO.filter((x) => x.status === "open").length;
+  const all = AUTO.filter((x) => x.stance === "favorevole"); // gli altri non si mostrano né si contano
+  if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
+  const fav = all.filter((x) => ["target", "stop", "none"].includes(x.status)), open = all.filter((x) => x.status === "open").length;
   const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
-  st.innerHTML = box("Solo favorevoli (quelli per cui ti ho avvisato)", autoStats(fav)) + `<div class="stat"><span>Ancora aperti</span><b>${open}</b></div>`;
-  const groups = {}; closed.forEach((x) => (groups[x.stance] = groups[x.stance] || []).push(x));
-  $("#autoStance").innerHTML = Object.entries(groups).map(([k, v]) => { const s = autoStats(v); return `<div class="stat"><span>Giudizio: ${(STANCE[k] || [k])[0]}</span><b style="font-size:15px">${s.n} segnali · R medio ${sgn(s.avg)}</b></div>`; }).join("");
-  const rows = AUTO.slice().sort((a, b) => b.entry_ts - a.entry_ts).slice(0, 40);
-  tb.innerHTML = sigRows(rows);
+  st.innerHTML = box("Segnali favorevoli chiusi", autoStats(fav)) + `<div class="stat"><span>Ancora aperti</span><b>${open}</b></div>`;
+  $("#autoStance").innerHTML = "";
+  tb.innerHTML = sigRows(all.slice().sort((a, b) => b.entry_ts - a.entry_ts).slice(0, 40));
   const eq = []; let run = 0;
   fav.slice().sort((a, b) => (a.exit_ts || a.entry_ts) - (b.exit_ts || b.entry_ts)).forEach((x) => { run += x.r; eq.push([x.exit_ts || x.entry_ts, run]); });
   drawAutoEq(eq);
