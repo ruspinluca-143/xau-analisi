@@ -275,6 +275,11 @@ def run(topic=None, calendar=None):
         reminders(calendar, now_u, now_ts, can_send)
     except Exception as exc:  # noqa: BLE001
         print("Promemoria non riusciti: %s" % exc)
+    try:  # livelli di prezzo e scatti improvvisi scelti da Luca (market.py)
+        import market as MK
+        MK.check_alerts(send, can_send)
+    except Exception as exc:  # noqa: BLE001
+        print("Livelli/scatti non controllati: %s" % exc)
     try:
         bars, _ = E.get_bars(ys, "5m", now_ts)
     except Exception as exc:  # noqa: BLE001

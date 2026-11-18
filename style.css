@@ -253,3 +253,13 @@ canvas.cv{cursor:pointer}
 /* elenco dei suggerimenti sopra tutto il resto e ben scuro: sotto non si deve più leggere nulla */
 .top{z-index:4}
 .sugg{background:#0b0a12;border-color:rgba(255,255,255,.18);box-shadow:0 18px 44px rgba(0,0,0,.85);isolation:isolate}
+/* analisi avanzata, quadro di mercato, opzioni del grafico */
+.wi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.wi-grid label{display:flex;flex-direction:column;gap:4px;color:var(--muted)}
+.wi-grid input,.wi-grid select{width:100%}
+.mood{margin:8px 0 2px;font-size:13px;color:var(--muted);text-align:center;line-height:1.5}
+.mood[hidden]{display:none}
+.chartopts{margin:6px 2px 2px;gap:14px}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
+.chk input{accent-color:#8b7bff;width:16px;height:16px}
+#lvBody input[type=text]{min-width:90px}

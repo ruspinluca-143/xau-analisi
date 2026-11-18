@@ -495,8 +495,11 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
-ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket}
-POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
+import market as MK  # noqa: E402  (quadro di mercato, sessioni, reazione alla Fed, confronto con la regola, livelli personali)
+
+ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket,
+          "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark, "/api/levels": MK.api_levels}
+POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal, "/api/levels": MK.api_levels_post}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
 HITS = {}  # indirizzo -> orari delle ultime richieste

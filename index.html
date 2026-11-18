@@ -31,6 +31,7 @@
     <div class="hero-label" id="hName">Oro (XAUUSD)</div>
     <div class="hero-price" id="hPrice">–</div>
     <div class="hero-sub"><span id="hChange" class="delta">–</span><span id="hUpd" class="muted"></span></div>
+    <div class="mood" id="mood" hidden></div>
     <label class="spot" title="I dati possono differire di qualche dollaro dal tuo grafico: scrivi qui il prezzo che vedi su MT5 e sposto i livelli."><span>Prezzo su MT5</span><input id="spot" inputmode="decimal" placeholder="es. 3867" autocomplete="off"></label>
     <div class="actions">
       <button class="act" data-open="grafico"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></span>Grafico</button>
@@ -80,6 +81,7 @@
     <div class="card">
       <div class="row between segbar"><h3 id="chartTitle">Grafico</h3><div class="row gap"><div class="seg small" id="axisSeg1"></div><div class="seg small" id="dirSeg1"></div></div></div>
       <canvas id="cvCandles" class="cv tall"></canvas>
+      <div class="row gap small chartopts" id="chartOpts"><label class="chk"><input type="checkbox" id="optTrades"> Le mie operazioni</label><label class="chk"><input type="checkbox" id="optLevels"> Livelli chiave</label></div>
       <p class="muted small">Candele chiuse del time frame scelto, medie a 20 (blu) e 50 barre (viola). Le linee mostrano ingresso, stop e target del setup per la direzione scelta. Zoom: rotellina del mouse o pizzico con due dita; trascina per spostarti; doppio tocco o ⟲ per ripristinare; + e − per ingrandire o rimpicciolire.</p>
     </div>
   </section>
@@ -152,6 +154,10 @@
       <div id="jTable" class="tablewrap"></div>
       <p class="muted small">Ogni segnale che l'app ti ha mostrato viene salvato e poi seguito fino a target, stop o fine finestra. R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop).</p>
     </div>
+    <div class="card" id="lvCard"><h3>I tuoi livelli e scatti improvvisi</h3><div id="lvBody"></div></div>
+    <div class="card" id="ctxCard"><h3>Quadro di mercato</h3><div id="ctxBody"></div></div>
+    <div class="card" id="sesCard"><h3>Sessioni dell'oro</h3><div id="sesBody"></div></div>
+    <div class="card" id="fedCard"><h3>Come ha reagito l'oro alla Fed</h3><div id="fedBody"></div></div>
   </section>
 
   <section class="tab" id="tab-op">
@@ -202,6 +208,10 @@
       <div class="card"><h3>Confronto tra periodi</h3><canvas id="cvOpPer" class="cv short"></canvas><div id="opPeriods"></div></div>
       <div class="card"><h3>Ultime operazioni</h3><div id="opList"></div>
         <div class="row gap" style="margin-top:10px"><button class="btn" id="opExport">Esporta CSV</button><button class="btn" id="opClear">Cancella dati</button></div></div>
+      <div class="card" id="opWhatIfCard"><h3>E se… (cosa sarebbe cambiato)</h3><div id="opWhatIf"></div></div>
+      <div class="card" id="opBenchCard"><h3>Tu contro la regola dell'app</h3><div id="opBench"></div></div>
+      <div class="card" id="opHeatCard"><h3>Mappa giorno × ora</h3><div id="opHeat"></div></div>
+      <div class="card" id="opTaxCard"><h3>Riepilogo fiscale</h3><div id="opTax"></div></div>
     </div>
   </section>
 
@@ -232,5 +242,7 @@
 <script src="calendar.js"></script>
 <script src="scan.js"></script>
 <script src="suggest.js"></script>
+<script src="analisi.js"></script>
+<script src="mercato.js"></script>
 </body>
 </html>

@@ -503,6 +503,7 @@
       return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
     analysis(pool);
+    if (typeof window.opExtras === "function") window.opExtras(pool);
     projection(pool);
     movements();
     lotAdvice(pool);

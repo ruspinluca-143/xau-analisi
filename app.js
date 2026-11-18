@@ -286,6 +286,12 @@ function initZoom() {
   });
 }
 
+const CHOPT = Object.assign({ trades: false, levels: false }, (() => { try { return JSON.parse(localStorage.getItem("xau_chart_opts") || "{}"); } catch (e) { return {}; } })());
+window.addEventListener("load", () => ["trades", "levels"].forEach((k) => {
+  const el = document.getElementById(k === "trades" ? "optTrades" : "optLevels"); if (!el) return;
+  el.checked = !!CHOPT[k];
+  el.onchange = () => { CHOPT[k] = el.checked; try { localStorage.setItem("xau_chart_opts", JSON.stringify(CHOPT)); } catch (e) { /* senza: funziona uguale */ } renderChart(); };
+}));
 function renderChart() {
   if (!S.data || !S.ov) return; // cambiando simbolo S.ov resta vuoto finché non arrivano i dati nuovi
   const cv = $("#cvCandles"), k = setupCanvas(cv); if (!k) return;
@@ -327,6 +333,27 @@ function renderChart() {
   });
   c.lineWidth = 1;
   levels.forEach((l) => { c.strokeStyle = l.col; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(ml, Y(l.y)); c.lineTo(w - mr, Y(l.y)); c.stroke(); c.setLineDash([]); });
+  // livelli chiave: massimo/minimo di ieri e dei 20 giorni, numeri tondi (solo oro)
+  if (CHOPT.levels && S.ov.info) {
+    const inf = S.ov.info, ks = [[inf.prev_hi, "Max ieri"], [inf.prev_lo, "Min ieri"], [inf.hi20_d, "Max 20 giorni"], [inf.lo20_d, "Min 20 giorni"]].filter((x) => x[0] != null);
+    if (S.ov.gold) for (let v = Math.ceil((lo + o) / 50) * 50; v <= hi + o; v += 50) ks.push([v - o, String(v)]);
+    c.font = "10px sans-serif"; c.lineWidth = 1; c.textAlign = "left";
+    ks.forEach(([v, lab]) => { if (v < lo || v > hi) return; const y = Y(v), round = /^\d+$/.test(lab); c.strokeStyle = round ? "rgba(160,160,190,.28)" : "rgba(225,176,80,.7)"; c.setLineDash([2, 4]); c.beginPath(); c.moveTo(ml, y); c.lineTo(w - mr, y); c.stroke(); c.setLineDash([]); c.fillStyle = round ? "rgba(170,170,200,.7)" : "rgba(235,190,100,.95)"; c.fillText(round ? lab : lab + " " + fmt(v + o), ml + 4, y - 3); });
+  }
+  // le mie operazioni sopra le candele (entrata, uscita, esito); dati provvisori da video: solo il punto di chiusura
+  const mk = [];
+  if (CHOPT.trades && window.OP && n > 1) {
+    const sec = ch.sec || 300, tFirst = bars[0][0], tLast = bars[n - 1][0] + sec;
+    const idxOf = (ms) => { const s = ms / 1000; if (s < tFirst || s >= tLast) return -1; let a = 0, b = n - 1; while (a < b) { const m = (a + b + 1) >> 1; if (bars[m][0] <= s) a = m; else b = m - 1; } return a; };
+    OP.all().filter((t) => !t.kind && (!t.sym || (S.ov.gold ? /XAU|GOLD/i.test(t.sym) : String(t.sym).toUpperCase().startsWith(S.symbol.toUpperCase())))).forEach((t) => {
+      const ic = idxOf(t.ct); if (ic < 0 || ic < i0 - 1 || ic > i1 + 1) return;
+      const win = t.net >= 0, col = win ? css("--green") : css("--red"), real = t.src !== "video" && t.ot < t.ct, io = real ? idxOf(t.ot) : -1;
+      const xc = X(ic), yc = Y(t.cp - o);
+      if (io >= 0) { const xo = X(io), yo = Y(t.op - o); c.strokeStyle = col; c.globalAlpha = 0.55; c.lineWidth = 1.4; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(xo, yo); c.lineTo(xc, yc); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+        c.fillStyle = "#fff"; c.strokeStyle = "#000"; c.lineWidth = 1; c.beginPath(); if (t.dir === "buy") { c.moveTo(xo, yo - 6); c.lineTo(xo - 5, yo + 4); c.lineTo(xo + 5, yo + 4); } else { c.moveTo(xo, yo + 6); c.lineTo(xo - 5, yo - 4); c.lineTo(xo + 5, yo - 4); } c.closePath(); c.fill(); c.stroke(); mk.push({ x: xo, y: yo, t }); }
+      c.fillStyle = col; c.strokeStyle = "#000"; c.lineWidth = 1; c.beginPath(); c.arc(xc, yc, 4.2, 0, 7); c.fill(); c.stroke(); mk.push({ x: xc, y: yc, t });
+    });
+  }
   c.restore();
   c.textAlign = "left";
   levels.forEach((l) => { c.fillStyle = l.col; c.fillRect(w - mr, Y(l.y) - 9, mr - 2, 18); c.fillStyle = "#fff"; c.font = "bold 10.5px sans-serif"; c.fillText(axR ? l.rl : l.label, w - mr + 4, Y(l.y) + 3.5); });
@@ -336,7 +363,12 @@ function renderChart() {
     if (i % every !== 0) continue; const t = bars[i][0];
     c.fillText(ch.sec >= 86400 ? dIT(t) : ch.sec >= 3600 ? tIT(t) + " " + dIT(t) : tIT(t), Math.min(Math.max(X(i), ml + 24), w - mr - 24), h - 6);
   }
-  cv._hit = (x) => {
+  cv._hit = (x, y) => {
+    const near = y == null ? null : mk.filter((m) => Math.hypot(m.x - x, m.y - y) < 14).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+    if (near) {
+      const t = near.t, dm = (t.ct - t.ot) / 60000, f = (v) => (v == null ? "–" : Number(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      return `<b>${t.dir === "buy" ? "BUY" : "SHORT"}${t.vol != null ? " " + String(t.vol).replace(".", ",") + " lotti" : ""}</b> · <b class="${t.net >= 0 ? "up" : "down"}">${t.net >= 0 ? "+" : ""}${f(t.net)}</b><br>Apertura ${f(t.op)} · chiusura ${f(t.cp)}<br>${t.src === "video" ? "<span class=\"muted\">dato provvisorio da video (orario di apertura non vero)</span>" : "Durata " + (dm >= 180 ? (dm / 60).toFixed(1).replace(".", ",") + " ore" : Math.round(dm) + " min")}${t.swap ? "<br>Swap " + f(t.swap) : ""}`;
+    }
     const Vh = zView("candles", 0, n, Math.min(120, n)), i = Math.round(Vh.lo + (x - ml) / pw * Vh.span - 0.5);
     if (i < 0 || i >= n || x > w - mr) return null;
     const b = bars[i], o2 = off(), d = b[4] - b[1];
