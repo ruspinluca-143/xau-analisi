@@ -539,6 +539,9 @@ function renderSignals(sigs) {
 }
 
 /* ---------- report ---------- */
+// "Azzera da adesso": i segnali favorevoli nati prima di quel momento non si mostrano né si contano (restano nel registro; si possono ripristinare)
+let RESET = Number(localStorage.getItem("xau_reset_fav")) || 0;
+const afterReset = (x) => (x.entry_ts || 0) >= RESET;
 let JD = null;
 const loadLocalJournal = () => { try { return JSON.parse(localStorage.getItem("xau_journal") || "[]"); } catch (e) { return []; } };
 const saveLocalJournal = (items) => localStorage.setItem("xau_journal", JSON.stringify(items.slice(-500)));
@@ -547,7 +550,7 @@ async function loadJournal() {
     JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: loadLocalJournal() }) });
     saveLocalJournal(JD.items); // il diario locale tiene tutto (anche i non favorevoli) per aggiornarne gli esiti
     // ma il report mostra e conta solo i segnali favorevoli
-    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole") }) });
+    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole" && afterReset(x)) }) });
   } catch (e) { return; }
   const s = JD.stats || { n: 0 };
   $("#jStats").innerHTML = s.n ? `<div class="stat"><span>Segnali chiusi</span><b>${s.n}</b></div><div class="stat"><span>Target</span><b class="g">${s.target}</b></div><div class="stat"><span>Stop</span><b class="r">${s.stop}</b></div><div class="stat"><span>Win rate</span><b>${pct(s.win_rate)}</b></div><div class="stat"><span>R totale</span><b class="${s.total_r >= 0 ? "g" : "r"}">${sgn(s.total_r)}</b></div><div class="stat"><span>Ancora aperti</span><b>${JD.open}</b></div>` : `<p class="muted">Ancora nessun segnale chiuso. Attiva gli avvisi: ogni segnale che l'app vede viene salvato qui e seguito fino all'esito.</p>`;
@@ -718,7 +721,7 @@ function sigRows(items) {
 function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
-  const all = AUTO.filter((x) => x.stance === "favorevole"); // gli altri non si mostrano né si contano
+  const all = AUTO.filter((x) => x.stance === "favorevole" && afterReset(x)); // gli altri non si mostrano né si contano
   if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
   const fav = all.filter((x) => ["target", "stop", "none"].includes(x.status)), open = all.filter((x) => x.status === "open").length;
   const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
@@ -745,3 +748,17 @@ function drawAutoEq(eq) {
 /* ---------- app installabile ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* senza service worker funziona uguale */ });
 loadAuto();
+
+/* ---------- azzera i segnali favorevoli ---------- */
+(function () {
+  const btn = document.getElementById("resetFav"), undo = document.getElementById("resetFavUndo"), note = document.getElementById("resetNote");
+  if (!btn) return;
+  const show = () => {
+    undo.hidden = !RESET;
+    note.textContent = RESET ? "Conteggio ripartito da " + new Date(RESET * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + ": i segnali precedenti non si mostrano né si contano (sono ancora nel registro)." : "";
+  };
+  const apply = () => { try { localStorage.setItem("xau_reset_fav", String(RESET)); } catch (e) { /* senza: vale fino alla chiusura */ } show(); renderAuto(); loadJournal(); };
+  btn.onclick = () => { if (confirm("Azzero il conteggio dei segnali favorevoli da adesso? Quelli vecchi non vengono cancellati: puoi ripristinarli.")) { RESET = Math.floor(Date.now() / 1000); apply(); } };
+  undo.onclick = () => { RESET = 0; apply(); };
+  show();
+})();
