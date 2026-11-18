@@ -40,7 +40,7 @@
   async function load(force) {
     if (!force && D && Date.now() - last < 3 * 60000) return render();
     try {
-      const r = await fetch("/api/scan", { cache: "no-store" }), j = await r.json();
+      const r = await fetch("/api/scan", { cache: "no-store" }), j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "errore");
       D = j; last = Date.now(); err = "";
     } catch (e) { err = "Non riesco a leggere lo scanner adesso (" + e.message + ")."; }

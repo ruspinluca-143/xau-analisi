@@ -53,11 +53,11 @@
   let EV = null, last = 0, err = "";
   function render() {
     const box = document.querySelector("#calList"); if (!box) return;
-    if (EV === null) { box.innerHTML = `<p class="muted">${err || "Carico gli eventi…"}</p>`; return; }
+    if (EV === null) { box.innerHTML = `<p class="muted">${err ? esc(err) : "Carico gli eventi…"}</p>`; return; }
     const now = Date.now(), up = EV.filter((e) => e.ts * 1000 > now - 90 * 60000); // tengo anche quelli di poco fa
     if (!up.length) { box.innerHTML = '<p class="muted">Nessun evento ad alto impatto nei prossimi giorni.</p>'; return; }
     const nxt = up.find((e) => e.ts * 1000 > now);
-    let h = nxt ? `<div class="calnext"><span>Prossimo evento</span><b>${esc(itTitle(nxt.title))}</b><span>${nxt.country} · ${dayName(nxt.ts * 1000)}, ore ${hhmm(nxt.ts * 1000)} (${left(nxt.ts * 1000)})</span></div>` : "";
+    let h = nxt ? `<div class="calnext"><span>Prossimo evento</span><b>${esc(itTitle(nxt.title))}</b><span>${esc(nxt.country)} · ${dayName(nxt.ts * 1000)}, ore ${hhmm(nxt.ts * 1000)} (${left(nxt.ts * 1000)})</span></div>` : "";
     let cur = "";
     up.forEach((e, ix) => {
       const ms = e.ts * 1000, k = key(ms), today = key(now) === k, tomorrow = key(now + 86400000) === k;
@@ -77,7 +77,7 @@
   async function load(force) {
     if (!force && EV && Date.now() - last < 10 * 60000) return render();
     try {
-      const r = await fetch("/api/calendar", { cache: "no-store" }), j = await r.json();
+      const r = await fetch("/api/calendar", { cache: "no-store" }), j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "errore");
       EV = j.events || []; last = Date.now(); err = "";
       const u = document.querySelector("#calUpd"); if (u) u.textContent = "Aggiornato alle " + hhmm(j.updated ? j.updated * 1000 : Date.now()) + " · " + (j.source || "");
@@ -94,7 +94,7 @@
   async function loadPm() {
     const box = document.querySelector("#pmList"); if (!box) return;
     try {
-      const r = await fetch("/api/polymarket", { cache: "no-store" }), j = await r.json();
+      const r = await fetch("/api/polymarket", { cache: "no-store" }), j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "errore");
       let h = "";
       j.meetings.forEach((m) => {

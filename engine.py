@@ -132,6 +132,9 @@ def fetch(sym, interval, rng, ttl=40):
                 res = json.load(r)["chart"]["result"][0]
             with _lock:
                 _cache[key] = (now, res)
+                if len(_cache) > 80:  # tetto: richieste con tanti simboli diversi non devono riempire la memoria del server
+                    for k in sorted(_cache, key=lambda z: _cache[z][0])[:len(_cache) - 60]:
+                        _cache.pop(k, None)
             return res
         except Exception as exc:  # noqa: BLE001
             last = exc

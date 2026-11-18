@@ -23,7 +23,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="symbol" value="XAUUSD" placeholder="Cerca strumento" spellcheck="false" autocomplete="off">
   </label>
-  <button id="refresh" class="round" title="Aggiorna ora"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
+  <button id="refresh" class="round" title="Aggiorna ora" aria-label="Aggiorna ora"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
 </header>
 
 <main>
@@ -32,6 +32,7 @@
     <div class="hero-price" id="hPrice">–</div>
     <div class="hero-sub"><span id="hChange" class="delta">–</span><span id="hUpd" class="muted"></span></div>
     <div class="mood" id="mood" hidden></div>
+    <div class="mood" id="daybrief" hidden></div>
     <label class="spot" title="I dati possono differire di qualche dollaro dal tuo grafico: scrivi qui il prezzo che vedi su MT5 e sposto i livelli."><span>Prezzo su MT5</span><input id="spot" inputmode="decimal" placeholder="es. 3867" autocomplete="off"></label>
     <div class="actions">
       <button class="act" data-open="grafico"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></span>Grafico</button>
@@ -166,14 +167,14 @@
       <h3>Le mie operazioni (MetaTrader 5)</h3>
       <p class="muted small">Carica il rapporto di MT5 (Cronologia → tasto destro → Rapporto → HTML o CSV) ogni settimana o mese: le operazioni già caricate non si duplicano. Periodi dal 9 all'8 del mese dopo. <b>I dati restano solo su questo telefono</b>: non vanno mai sul sito.</p>
       <div class="row gap"><label class="btn primary" for="opFile" style="cursor:pointer">Carica file</label><input type="file" id="opFile" accept=".html,.htm,.csv,.tsv,.txt" multiple hidden><button class="btn" id="opPasteBtn">Incolla testo</button></div>
-      <div id="opPasteBox" hidden><textarea id="opText" rows="5" placeholder="Incolla qui le righe copiate da MT5 (con l'intestazione delle colonne)"></textarea><button class="btn primary" id="opImport">Importa</button></div>
+      <div id="opPasteBox" hidden><textarea id="opText" aria-label="Testo copiato da MT5" rows="5" placeholder="Incolla qui le righe copiate da MT5 (con l'intestazione delle colonne)"></textarea><button class="btn primary" id="opImport">Importa</button></div>
       <p class="small" id="opMsg"></p>
       <p class="small" id="opCount" style="font-weight:700"></p>
       <p class="muted" id="opEmpty">Ancora nessuna operazione caricata.</p>
     </div>
     <div id="opData" hidden>
       <div class="card">
-        <div class="row gap"><select id="opPeriod"></select><select id="opSym"></select></div>
+        <div class="row gap"><select id="opPeriod" aria-label="Periodo"></select><select id="opSym" aria-label="Simbolo"></select></div>
         <div id="opStats" class="statrow" style="margin-top:10px"></div>
         <p class="muted small" id="opTaxNote"></p>
       </div>
@@ -221,7 +222,7 @@
   <footer class="foot muted small">Solo analisi: nessun broker, nessun ordine. Dati gratuiti e non ufficiali, con possibile ritardo. Non è consulenza finanziaria.</footer>
 </main>
 
-<nav class="bottom" id="tabs">
+<nav class="bottom" id="tabs" aria-label="Schermate dell'app">
   <button data-tab="oggi" class="on"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>Oggi</button>
   <button data-tab="grafico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>Grafico</button>
   <button data-tab="tm"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>Time Machine</button>

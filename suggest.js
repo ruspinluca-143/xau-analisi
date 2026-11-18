@@ -43,7 +43,7 @@
   function show(list) {
     cur = list; hi = list.length ? 0 : -1;
     box.innerHTML = list.map(([s, n], i) => `<button type="button" class="sg${i === hi ? " on" : ""}" data-s="${s}"><b>${n}</b><span>${s}</span></button>`).join("");
-    box.hidden = !list.length;
+    box.hidden = !list.length; inp.setAttribute("aria-expanded", list.length ? "true" : "false");
   }
   function pick(sym) {
     inp.value = sym; box.hidden = true; inp.blur();
@@ -60,6 +60,8 @@
       if (!box.hidden && cur.length && inp.value.trim()) { e.preventDefault(); pick(cur[Math.max(0, hi)][0]); } // "T" + Invio = Tesla
     } else if (e.key === "Escape") { box.hidden = true; }
   });
+  box.addEventListener("click", (e) => { const b = e.target.closest(".sg"); if (b && !box.hidden) { e.preventDefault(); pick(b.dataset.s); } }); // anche da tastiera (Invio su un suggerimento)
+  inp.setAttribute("role", "combobox"); inp.setAttribute("aria-autocomplete", "list"); inp.setAttribute("aria-expanded", "false"); inp.setAttribute("aria-controls", "symSugg"); box.id = "symSugg"; box.setAttribute("role", "listbox");
   box.addEventListener("pointerdown", (e) => { // pointerdown: scatta prima che il campo perda il focus
     const b = e.target.closest(".sg"); if (!b) return; e.preventDefault(); pick(b.dataset.s);
   });

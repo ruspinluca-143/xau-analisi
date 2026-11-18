@@ -249,6 +249,9 @@ def api_setup(q):
     else:
         bars, st = build_setup(ys, now_u, tf, setup, rrs, q, True, bounded(q, "replays", 10000, 1000, 20000, int))
         SETUP_CACHE[ck] = (time.time(), bars, st)
+        if len(SETUP_CACHE) > 40:  # senza tetto, chi chiede tanti simboli diversi riempie la memoria
+            for k in sorted(SETUP_CACHE, key=lambda z: SETUP_CACHE[z][0])[:len(SETUP_CACHE) - 30]:
+                SETUP_CACHE.pop(k, None)
     info = E.price_info(ys, now_ts, num(q, "spot", None))
     if q.get("lite", [""])[0] == "1":  # scansione "Opportunità": solo i numeri, senza grafico, casistiche e ventaglio
         slim = st
@@ -519,6 +522,8 @@ def api_journal(body):
         if isinstance(x, dict) and all(k in x for k in JOURNAL_KEYS) and x["status"] in ("open", "target", "stop", "none") \
                 and all(isinstance(x[k], (int, float)) for k in ("entry", "stop", "rr", "hold", "entry_ts")):
             items.append(x)
+    if len({(str(x["symbol"]), str(x["tf"])) for x in items if x["status"] == "open"}) > 12:
+        raise ValueError("Troppi strumenti diversi aperti nel diario.")
     items = refresh_journal(items, now_ts)
     items = sorted(items, key=lambda x: x["entry_ts"], reverse=True)
     closed = [x for x in items if x["status"] in ("target", "stop", "none")]
@@ -589,7 +594,7 @@ def too_many(ip):
                 HITS.pop(k, None)
         return len(lst) > RATE_PER_MIN
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-        ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".json": "application/json", ".png": "image/png", ".ico": "image/x-icon"}
+        ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".png": "image/png", ".ico": "image/x-icon"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -598,7 +603,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _ip(self):
         fwd = self.headers.get("X-Forwarded-For", "")
-        return (fwd.split(",")[0].strip() if fwd else self.client_address[0]) or "?"
+        # il PRIMO valore lo può scrivere il client (basterebbe cambiarlo a ogni richiesta per aggirare il limite): vale l'ULTIMO, aggiunto dal proxy
+        return (fwd.split(",")[-1].strip() if fwd else self.client_address[0]) or "?"
 
     def _authorized(self):
         if not PASSWORD or urlparse(self.path).path in PUBLIC_FILES:
@@ -621,8 +627,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _sec(self):
+        """Intestazioni di sicurezza: niente script o risorse da altri siti, niente pagina dentro frame altrui, niente indovinare il tipo di file."""
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                         "connect-src 'self' https://raw.githubusercontent.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+
     def _send(self, code, body, ctype):
         self.send_response(code)
+        self._sec()
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -645,7 +661,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
             except Exception as exc:  # noqa: BLE001
-                self._json(500, {"error": str(exc)})
+                print("errore %s: %s" % (u.path, exc))  # il dettaglio resta nei log del server, non va al visitatore
+                self._json(500, {"error": "Errore temporaneo del server o dei dati: riprova tra poco."})
             return
         if u.path == "/api/health":
             self._json(200, {"ok": True, "claude": bool(os.environ.get("ANTHROPIC_API_KEY"))})

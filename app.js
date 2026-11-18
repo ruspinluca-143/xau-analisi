@@ -81,7 +81,7 @@ function seg(el, items, current, onPick) {
   el.innerHTML = "";
   items.forEach((it) => {
     const b = document.createElement("button");
-    b.textContent = it.label; b.className = it.value === current ? "on" : ""; b.disabled = !!it.disabled;
+    b.textContent = it.label; b.className = it.value === current ? "on" : ""; b.disabled = !!it.disabled; b.setAttribute("aria-pressed", it.value === current ? "true" : "false");
     b.onclick = () => onPick(it.value);
     el.appendChild(b);
   });
@@ -109,7 +109,7 @@ let heavyTimer = 0;
 function setActive(name) {
   if (S.tab === name) return;
   S.tab = name; document.body.dataset.tab = name;
-  $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
+  $$("#tabs button").forEach((x) => { x.classList.toggle("on", x.dataset.tab === name); if (x.dataset.tab === name) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current"); });
   // i disegni pesanti partono solo quando lo scorrimento si ferma: così il dito non scatta
   clearTimeout(heavyTimer);
   heavyTimer = setTimeout(() => { if (name === "avvisi") { loadJournal(); loadAuto(); pollSignals(true); } renderChart(); renderTm(); }, 140);
@@ -131,6 +131,9 @@ function pagerUpdate() {
   setActive(TAB_ORDER[Math.round(f)]);
 }
 pager.addEventListener("scroll", onPagerScroll, { passive: true });
+// stato iniziale per tastiera e lettori di schermo: schermata attiva segnalata e grafici con un nome (le schermate fuori vista restano raggiungibili: non le rendo inerti perché non posso provarlo su un vero telefono)
+$$("#tabs button").forEach((x) => { if (x.dataset.tab === S.tab) x.setAttribute("aria-current", "page"); });
+document.querySelectorAll("canvas").forEach((cv) => { const card = cv.closest(".card"), t = card && card.querySelector("h3,h4"); cv.setAttribute("role", "img"); cv.setAttribute("aria-label", "Grafico: " + (t ? t.textContent.trim() : "dati") + ". I valori principali sono nel testo vicino; tocca il grafico per i dettagli."); });
 if (window.ResizeObserver) { const ro = new ResizeObserver(() => onPagerScroll()); panes.forEach((p) => ro.observe(p)); }
 window.addEventListener("resize", () => { pager.scrollTo({ left: TAB_ORDER.indexOf(S.tab) * pagerStep(), behavior: "auto" }); onPagerScroll(); });
 $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) goTab(b.dataset.tab); };
@@ -219,6 +222,7 @@ function setupCanvas(cv) {
   if (!w || !h) return null;
   cv.width = w * dpr; cv.height = h * dpr;
   const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  if (!cv.hasAttribute("aria-label")) { const hd = cv.closest(".card"); const t = hd && hd.querySelector("h3,h4"); cv.setAttribute("role", "img"); cv.setAttribute("aria-label", "Grafico: " + (t ? t.textContent.trim() : "dati") + ". I valori principali sono nel testo vicino; tocca il grafico per i dettagli."); }
   c.font = "11px -apple-system,Segoe UI,Roboto,sans-serif";
   const kk = { cvCandles: "candles", cvFan: "fan", cvCases: "cases" }[cv.id]; if (kk && TA[kk]) TA[kk]();
   return { c, w, h };

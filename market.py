@@ -27,6 +27,9 @@ def cached(key, ttl, fn):
         return c[1]
     val = fn()
     _cache[key] = (now, val)
+    if len(_cache) > 30:  # parametri sempre diversi (es. benchmark) non devono far crescere la memoria
+        for k in sorted(_cache, key=lambda z: _cache[z][0])[:len(_cache) - 20]:
+            _cache.pop(k, None)
     return val
 
 

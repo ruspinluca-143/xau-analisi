@@ -8,8 +8,8 @@
   const cl = (x) => (x > 0 ? "g" : x < 0 ? "r" : "");
   const pc = (x, d = 0) => (x == null ? "–" : (x * 100).toFixed(d).replace(".", ",") + "%");
   const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
-  const get = async (u) => { const r = await fetch(u, { cache: "no-store" }), j = await r.json(); if (!r.ok) throw new Error(j.error || "errore"); return j; };
-  let CTX = null, CAL = null;
+  const get = async (u) => { const r = await fetch(u, { cache: "no-store" }), j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "errore"); return j; };
+  let CTX = null, CAL = null, CTXERR = "";
 
   /* ---------- semaforo del giorno (sotto il prezzo) + quadro di mercato ---------- */
   const left = (ts) => { const m = Math.round((ts - Date.now() / 1000) / 60); return m < 90 ? m + " min" : Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") + " min"; };
@@ -26,9 +26,24 @@
     if (nx) parts.push(`notizia rossa tra <b>${left(nx.ts)}</b>`);
     el.innerHTML = parts.join(" · "); el.hidden = false;
   }
+  /* riepilogo di oggi sotto il semaforo: segnali favorevoli delle ultime 24 ore (dall'archivio sul telefono) e le tue operazioni di oggi */
+  function brief() {
+    const el = $("#daybrief"); if (!el) return;
+    const now = Date.now() / 1000; let ar = {};
+    try { ar = JSON.parse(localStorage.getItem("xau_archive_v1") || "{}"); } catch (e) { ar = {}; }
+    const fav = Object.values(ar).filter((x) => x.stance === "favorevole" && x.entry_ts > now - 86400 && (typeof afterReset !== "function" || afterReset(x)));
+    const open = fav.filter((x) => x.status === "open"), parts = [];
+    if (fav.length) parts.push(`segnali favorevoli nelle ultime 24 ore: <b>${fav.length}</b>${open.length ? " (" + open.length + " ancora aperti)" : ""}: ` + fav.slice(0, 4).map((x) => esc((x.symbol && x.symbol !== "XAUUSD" ? x.symbol : "Oro") + " " + (x.dir === "buy" ? "BUY" : "SHORT") + " " + x.tf)).join(", ") + (fav.length > 4 ? "…" : ""));
+    else parts.push("nessun segnale favorevole nelle ultime 24 ore");
+    if (window.OP) { // l'orario delle operazioni è quello del broker (circa ora italiana +1): il giorno si confronta sulla stessa scala
+      const day = new Date(Date.now() + 3600000).toISOString().slice(0, 10), td = OP.all().filter((t) => !t.kind && new Date(t.ct).toISOString().slice(0, 10) === day);
+      if (td.length) { const net = td.reduce((a, t) => a + t.net, 0); parts.push(`tue operazioni di oggi: <b>${td.length}</b>, netto <b class="${cl(net)}">${sg(net)}</b>`); }
+    }
+    el.innerHTML = parts.join(" · "); el.hidden = false;
+  }
   function ctxCard() {
     const el = $("#ctxBody"); if (!el) return;
-    if (!CTX) { el.innerHTML = '<p class="muted">Carico…</p>'; return; }
+    if (!CTX) { el.innerHTML = `<p class="muted">${CTXERR ? esc(CTXERR) : "Carico…"}</p>`; return; }
     const rows = CTX.rows.map((r) => {
       const chg = r.kind === "bp" ? sg(r.chg_abs * 100, 0) + " pb" : r.kind === "pt" ? sg(r.chg_abs, 2) : sg(r.chg_pct, 2) + "%";
       const unus = Math.abs(r.z) >= 2 ? '<span class="pill amber">insolito</span>' : Math.abs(r.z) >= 1 ? '<span class="pill">sopra il normale</span>' : '<span class="pill">nella norma</span>';
@@ -38,9 +53,9 @@
     el.innerHTML = `<p class="muted small">Cosa fanno oggi i mercati che di solito muovono l'oro. La correlazione va da -1 (si muovono al contrario) a +1 (insieme): è un'abitudine recente, non una regola. Oro oggi: <b class="${cl(CTX.gold.chg_pct)}">${sg(CTX.gold.chg_pct)}%</b>.</p>${rows}${CTX.notes.map((t) => `<p class="small"><b>⚠</b> ${esc(t)}</p>`).join("")}<p class="muted small">Dati Yahoo (possono avere qualche minuto di ritardo). Misura il passato: non prevede cosa farà l'oro.</p>`;
   }
   async function loadCtx() {
-    try { CTX = await get("/api/context"); } catch (e) { const el = $("#ctxBody"); if (el && !CTX) el.innerHTML = `<p class="muted">Non riesco a leggere il quadro adesso (${esc(e.message)}).</p>`; }
+    try { CTX = await get("/api/context"); CTXERR = ""; } catch (e) { CTXERR = "Non riesco a leggere il quadro adesso (" + e.message + ")."; }
     try { const c = await get("/api/calendar"); CAL = c.events || []; } catch (e) { /* senza calendario il semaforo funziona lo stesso */ }
-    mood(); ctxCard();
+    mood(); brief(); ctxCard();
   }
 
   /* ---------- sessioni ---------- */
@@ -81,5 +96,6 @@
   new MutationObserver(onTab).observe(document.body, { attributes: true, attributeFilter: ["data-tab"] });
   window.addEventListener("resize", () => { sesCard(); });
   loadCtx(); setInterval(() => { if (!document.hidden) loadCtx(); }, 180000);
+  brief(); setInterval(brief, 60000);
   setTimeout(() => { loadSes(); loadFed(); }, 1500);
 })();
