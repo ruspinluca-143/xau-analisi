@@ -251,6 +251,7 @@
     e0.sort((a, b) => a - b); const med0 = pctile(e0, 0.5), pos0 = e0.filter((v) => v > 0).length / e0.length, lo0 = pctile(e0, 0.1);
     txt.innerHTML = `Stima per ${M === 1 ? "il" : "i"} <b>${label}</b>. ${M > 1 ? "Finora nel periodo in corso" : "Finora"}: <b class="${cls(base)}">${sg(base)}</b>. Restano circa <b>${rem}</b> giorni di mercato. Finora hai fatto in media <b class="${cls(mu)}">${sg(mu)}</b> per giorno di mercato (circa <b>${sg(mu * 21)}</b> per ogni periodo di un mese), calcolato su ${nets.length} giorni di mercato.<br>`
       + `Risultato ${endPhrase}: mediano <b class="${cls(med)}">${sg(med)}</b> (dopo il 26% di tasse circa <b>${sg(afterTax(med))}</b>); nel 10% dei casi peggiori <b class="${cls(lo)}">${sg(lo)}</b> o meno; nel 10% dei migliori <b class="${cls(hi)}">${sg(hi)}</b> o più.<br>`
+      + (capitalEst().has ? `Conto stimato ${endPhrase}: mediano <b>${num(capitalEst().cap + (med - base), 0)}</b> (oggi circa ${num(capitalEst().cap, 0)}, senza altri prelievi o depositi).<br>` : "")
       + `Probabilità di chiudere il periodo in positivo: <b>${shown(pos)}</b>. Calo massimo che potresti incontrare nel periodo (95% dei casi): <b>${num(pctile(dds, 0.95), 0)}</b> dal punto più alto.<br>`
       + `<b>Scenario prudente</b> (se in media ogni operazione non guadagnasse nulla, cioè senza vantaggio): mediano <b class="${cls(med0)}">${sg(med0)}</b>, nel 10% dei casi peggiori <b class="${cls(lo0)}">${sg(lo0)}</b> o meno, probabilità di chiudere in positivo <b>${shown(pos0)}</b>. Più i due scenari sono distanti, più la stima dipende da un periodo andato bene.` + (M > 12 ? `<br><b>Attenzione:</b> su ${M / 12} anni questi importi sono solo un calcolo aritmetico (stesso ritmo e stessi lotti per sempre), non una previsione di quanto guadagnerai.` : "");
     note.textContent = `Stima fatta rimescolando 1.500 volte i tuoi ${nets.length} giorni di mercato (anche quelli senza operazioni), cioè sulla media di quello che hai fatto finora diviso per i giorni. Non è una previsione: assume che le operazioni future somiglino a quelle passate e non tiene conto delle serie di vincite o perdite. Con pochi mesi di storico è molto indicativa, non sicura.` + (M > 1 ? " Su un orizzonte lungo conta ancora di più: la stima presuppone che per tutto questo tempo tu faccia lo stesso numero di operazioni con gli stessi risultati di questi pochi mesi. Prendila come un esercizio, non come un obiettivo." : "") + (M > 12 ? " Per più anni il calcolo usa la media e la variabilità dei tuoi risultati (non rimescola ogni singolo giorno), con lotti costanti: non considera reinvestimento, inflazione, cambi di strategia né periodi in cui non operi." : "");
@@ -305,6 +306,37 @@
   }
   const dd2 = (day) => { const d = new Date(day * 86400000); return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
 
+
+  /* ---------- conto: depositi e prelievi segnati a mano; il capitale si ricalcola da solo ---------- */
+  const MKEY = "xau_movimenti_v1";
+  let MOV = [];
+  try { MOV = JSON.parse(localStorage.getItem(MKEY) || "[]"); } catch (e) { MOV = []; }
+  const saveMov = () => { try { localStorage.setItem(MKEY, JSON.stringify(MOV)); } catch (e) { msg("Memoria piena: non riesco a salvare.", true); } };
+  const dmy = (ms) => { const d = new Date(ms); return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`; };
+  function capitalEst() {
+    const dep = MOV.filter((m) => m.t === "d").reduce((a, m) => a + m.amt, 0), wd = MOV.filter((m) => m.t === "w").reduce((a, m) => a + m.amt, 0);
+    const net = T.reduce((a, t) => a + t.net, 0);
+    return { dep, wd, net, cap: dep - wd + net, has: MOV.length > 0 };
+  }
+  function movements() {
+    const st = document.querySelector("#movStats"), ls = document.querySelector("#movList"); if (!st) return;
+    const e = capitalEst(), box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
+    st.innerHTML = e.has
+      ? box("Depositi", num(e.dep, 2)) + box("Prelievi", num(e.wd, 2), e.wd ? "r" : "") + box("Risultato delle operazioni", sg(e.net), cls(e.net)) + box("Capitale stimato oggi", num(e.cap, 2), e.cap >= 0 ? "g" : "r")
+      : '<p class="muted small">Segna qui i soldi che metti sul conto (deposito) e quelli che tiri fuori (prelievo): il capitale si calcola da solo e lo usano il consiglio sul lotto e le prospettive. Il credito o bonus del broker non è capitale: non segnarlo.</p>';
+    ls.innerHTML = [...MOV].sort((a, b) => b.ts - a.ts).map((m) => `<div class="sigrow"><div class="sr1"><b>${m.t === "w" ? "Prelievo" : "Deposito"}</b><span>${dmy(m.ts)}</span><span class="when ${m.t === "w" ? "r" : "g"}" style="font-weight:700">${m.t === "w" ? "−" : "+"}${num(m.amt, 2)}</span><button class="btn" data-del="${m.id}" style="margin-left:8px;height:30px;padding:0 10px;font-size:12px">Elimina</button></div></div>`).join("");
+    ls.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => { if (confirm("Elimino questo movimento?")) { MOV = MOV.filter((m) => m.id !== b.dataset.del); saveMov(); render(); } }));
+  }
+  function addMovement() {
+    const t = document.querySelector("#movType").value, d = document.querySelector("#movDate").value, a = parseFloat(String(document.querySelector("#movAmt").value).replace(",", "."));
+    if (!(a > 0)) return msg("Scrivi l'importo in euro (maggiore di zero).", true);
+    if (!d) return msg("Scegli la data.", true);
+    MOV.push({ id: String(Date.now()) + Math.floor(Math.random() * 1000), t, ts: Date.parse(d + "T12:00:00Z"), amt: Math.round(a * 100) / 100 });
+    saveMov(); document.querySelector("#movAmt").value = "";
+    msg(`${t === "w" ? "Prelievo" : "Deposito"} di ${num(a, 2)} segnato. Statistiche, capitale e consiglio sul lotto sono aggiornati.`);
+    render();
+  }
+
   /* ---------- che lotto usare: in base ai soldi sul conto e a come operi davvero ---------- */
   const LKEY = "xau_lotto";
   let LOT = { cap: "", dd: "20" };
@@ -317,7 +349,8 @@
     if (ddEl) ddEl.value = LOT.dd;
     const trades = pool.filter((t) => !t.kind && t.vol > 0);
     if (trades.length < 30) { el.innerHTML = '<p class="muted">Servono almeno 30 operazioni con la dimensione (lotti) per dare un consiglio.</p>'; return; }
-    const cap = parseFloat(String(LOT.cap).replace(",", ".")), ddPct = (+LOT.dd || 20) / 100;
+    const capManual = parseFloat(String(LOT.cap).replace(",", ".")), est = capitalEst();
+    const cap = capManual > 0 ? capManual : est.has && est.cap > 0 ? est.cap : NaN, capSrc = capManual > 0 ? "scritto da te" : "calcolato dai tuoi depositi e prelievi", ddPct = (+LOT.dd || 20) / 100;
     const u = trades.map((t) => t.net / (t.vol / 0.01)); // risultato di ogni operazione se fosse stata di 0,01 lotti
     const worstU = Math.min(...u), vols = trades.map((t) => t.vol).sort((a, b) => a - b);
     const q = (a, f) => a[Math.min(a.length - 1, Math.max(0, Math.round(f * (a.length - 1))))];
@@ -335,7 +368,7 @@
     }).join("");
     const base = [0.01, 0.02, 0.03, 0.05, 0.1];
     if (!(cap > 0)) {
-      el.innerHTML = `<p class="small">Scrivi qui sopra quanti soldi <b>tuoi</b> hai sul conto (senza credito o bonus del broker) e ti dico quale lotto è coerente con come operi. Intanto, sui tuoi risultati passati:</p>`
+      el.innerHTML = `<p class="small">Scrivi qui sopra quanti soldi <b>tuoi</b> hai sul conto (senza credito o bonus del broker), oppure segna sotto i tuoi depositi e prelievi, e ti dico quale lotto è coerente con come operi. Intanto, sui tuoi risultati passati:</p>`
         + `<p class="small">Il tuo lotto abituale è <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}). Ogni 0,01 lotti, in un periodo di ${N} giorni di mercato, hanno dato un calo massimo di <b>${num(dd1, 0)}</b> (95% dei casi) e la peggiore operazione ha perso <b>${num(w1, 0)}</b>.</p>` + rows(base);
       return;
     }
@@ -344,7 +377,7 @@
     const set = [...new Set([...base, rec, Math.round(typ * 100) / 100].map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b);
     const tk = typ / 0.01, ddT = dd1 * tk, wT = w1 * tk;
     el.innerHTML = `<div class="stat" style="margin-bottom:10px"><span>Lotto consigliato</span><b class="g">${lf(rec)}</b></div>`
-      + `<p class="small">Con <b>${num(cap, 0)}</b> di capitale, accettando un calo massimo del <b>${pct(ddPct)}</b> (${num(ddPct * cap, 0)}) e una perdita su singola operazione non oltre il <b>5%</b> (${num(0.05 * cap, 0)}), in base a come hai operato finora il lotto massimo coerente è <b>${lf(rec)}</b>. A pesare di più è ${bind}.</p>`
+      + `<p class="small">Con <b>${num(cap, 0)}</b> di capitale (${capSrc}), accettando un calo massimo del <b>${pct(ddPct)}</b> (${num(ddPct * cap, 0)}) e una perdita su singola operazione non oltre il <b>5%</b> (${num(0.05 * cap, 0)}), in base a come hai operato finora il lotto massimo coerente è <b>${lf(rec)}</b>. A pesare di più è ${bind}.</p>`
       + `<p class="small">Tu usi di solito <b>${lf(typ)}</b> (metà delle operazioni fino a ${lf(typ)}, il 90% fino a ${lf(high)}): con quel lotto il calo massimo atteso in un periodo (95% dei casi) è <b>${num(ddT, 0)}</b> (${pct(ddT / cap)}), e un'operazione andata male come la peggiore vista varrebbe <b>${num(wT, 0)}</b> (${pct(wT / cap)} del capitale).</p>`
       + rows(set)
       + `<p class="muted small">Calcolo sui tuoi ${trades.length} risultati passati (${days} giorni), rapportati a ogni 0,01 lotti: i numeri crescono in proporzione al lotto. Non è un consiglio finanziario. Se spesso tieni aperte posizioni senza stop, la perdita vera può essere più grande di quella vista. Controlla anche il margine richiesto dal broker: con lotti grandi e poco capitale il margine libero si consuma in fretta. Il credito o bonus non è tuo capitale: non contarlo.</p>`;
@@ -385,12 +418,13 @@
     document.querySelector("#opSym").innerHTML = `<option value="all">Tutti i simboli</option>` + syms.map((s) => `<option ${s === view.sym ? "selected" : ""}>${esc(s)}</option>`).join("");
     document.querySelector("#opSym").hidden = syms.length < 2;
     const s = stats(L);
+    const wdPer = MOV.filter((m) => m.t === "w" && (view.period === "all" || periodStart(m.ts) === +view.period)).reduce((a, m) => a + m.amt, 0);
     const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
     document.querySelector("#opStats").innerHTML = s.n
       ? box("Risultato netto", sg(s.net), cls(s.net)) + box("Dopo tasse (26%)", sg(afterTax(s.net)), cls(afterTax(s.net))) + box("Operazioni", s.n) + box("Vinte", pct(s.win)) +
         box("Profit factor", s.pf == null ? "–" : s.pf === Infinity ? "∞" : num(s.pf)) + box("Media vincita", sg(s.avgW || 0), "g") + box("Media perdita", num(s.avgL || 0), "r") +
         box("Migliore", sg(s.best), cls(s.best)) + box("Peggiore", num(s.worst), cls(s.worst)) + box("Media a operazione", sg(s.exp), cls(s.exp)) +
-        box("Durata media", fdur(s.dur)) + box("Commissioni + swap", num(s.cost), cls(s.cost))
+        box("Durata media", fdur(s.dur)) + box("Commissioni + swap", num(s.cost), cls(s.cost)) + (wdPer > 0 ? box("Prelevato nel periodo", num(wdPer, 2), "r") : "")
       : '<p class="muted">Nessuna operazione in questo periodo.</p>';
     document.querySelector("#opTaxNote").textContent = s.n ? (s.net > 0 ? `Tasse stimate: ${num(s.net - afterTax(s.net))} (26% del guadagno netto del periodo). ` : "Periodo in perdita: nessuna tassa stimata. ") + "È una stima indicativa: la tassazione vera dipende dalla tua situazione (per esempio dalla compensazione delle perdite)." : "";
     extra(L);
@@ -417,6 +451,7 @@
       return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
     projection(pool);
+    movements();
     lotAdvice(pool);
     barChart("#cvOpPer", [...starts].reverse().map((st) => { const x = stats(pool.filter((t) => periodStart(t.ct) === st)); return { t: periodLabel(st), v: x.net, d: `${x.n} operazioni · vinte ${pct(x.win)}<br>Dopo tasse ${sg(afterTax(x.net))}` }; }));
     // elenco
@@ -442,6 +477,8 @@
   function init() {
     const f = document.querySelector("#opFile"); if (!f) return;
     buildProjSeg();
+    const md = document.querySelector("#movDate"); if (md) md.value = new Date().toISOString().slice(0, 10);
+    const ma = document.querySelector("#movAdd"); if (ma) ma.onclick = addMovement;
     const yrs = document.querySelector("#opProjYears"); if (yrs) yrs.oninput = () => { if (yrs.value !== "" && (+yrs.value < 1 || +yrs.value > 40)) yrs.value = Math.max(1, Math.min(40, +yrs.value)); render(); };
     const capEl = document.querySelector("#opCap"), ddEl = document.querySelector("#opDdLim");
     if (capEl) capEl.oninput = () => { LOT.cap = capEl.value; saveLot(); render(); };

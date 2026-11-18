@@ -371,6 +371,68 @@ def api_calendar(q):
     return CAL["data"]
 
 
+PM = {"t": 0.0, "data": None}
+MESI_IT = {"January": "gennaio", "February": "febbraio", "March": "marzo", "April": "aprile", "May": "maggio", "June": "giugno", "July": "luglio",
+           "August": "agosto", "September": "settembre", "October": "ottobre", "November": "novembre", "December": "dicembre"}
+
+
+def api_polymarket(q):
+    """Probabilità che il mercato di previsione Polymarket assegna alle prossime decisioni della Fed (dati pubblici, sola lettura).
+    Sono scommesse con soldi veri: un termometro delle aspettative, non una previsione nostra. Cache di 10 minuti."""
+    now = time.time()
+    if PM["data"] is not None and now - PM["t"] < 600:
+        return PM["data"]
+    why = []
+    j = _get_json("https://gamma-api.polymarket.com/public-search?q=Fed%20Decision&limit_per_type=14", why)
+    if not j or "events" not in j:
+        if PM["data"] is not None:
+            return PM["data"]
+        raise ValueError("Polymarket non raggiungibile adesso (%s)" % "; ".join(why)[:200])
+    out = []
+    for e in j["events"]:
+        title = str(e.get("title", ""))
+        if not title.lower().startswith("fed decision in"):
+            continue
+        try:
+            end = int(datetime.datetime.fromisoformat(str(e["endDate"]).replace("Z", "+00:00")).timestamp())
+        except (KeyError, ValueError):
+            continue
+        if end < now:
+            continue
+        opts = []
+        for m in e.get("markets") or []:
+            ql = str(m.get("question", "")).lower()
+            try:
+                pr = m.get("outcomePrices")
+                pr = json.loads(pr) if isinstance(pr, str) else pr
+                p = float(pr[0])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if "decrease" in ql and "50" in ql:
+                lab, order = "Taglio di 0,50 o più", 0
+            elif "decrease" in ql:
+                lab, order = "Taglio di 0,25", 1
+            elif "no change" in ql:
+                lab, order = "Tassi invariati", 2
+            elif "increase" in ql and "50" in ql:
+                lab, order = "Rialzo di 0,50 o più", 4
+            elif "increase" in ql:
+                lab, order = "Rialzo di 0,25", 3
+            else:
+                continue
+            opts.append((order, {"label": lab, "p": round(p, 4)}))
+        if not opts:
+            continue
+        month = MESI_IT.get(title.split(" in ")[-1].strip("? "), title)
+        out.append({"title": "Riunione della Fed di %s" % month, "end": end, "volume": round(float(e.get("volume") or 0)),
+                    "options": [o for _, o in sorted(opts, key=lambda x: x[0])]})
+    out.sort(key=lambda m: m["end"])
+    if not out:
+        raise ValueError("nessun mercato sulla Fed trovato")
+    PM["data"], PM["t"] = {"meetings": out[:3], "updated": int(now), "source": "Polymarket"}, now
+    return PM["data"]
+
+
 def api_log(q):
     try:
         with open(os.environ.get("LOG_FILE", "log.json"), encoding="utf-8") as fh:
@@ -433,7 +495,7 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
-ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan}
+ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket}
 POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")

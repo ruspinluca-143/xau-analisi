@@ -119,9 +119,15 @@
     </div>
     <div class="card" id="calCard">
       <h3>Notizie importanti in arrivo</h3>
-      <p class="muted small">Solo gli eventi "rossi" (impatto alto) che fanno muovere i mercati: tassi, inflazione, lavoro USA, discorsi delle banche centrali. Orari in ora italiana. Attorno a questi eventi l'oro può muoversi molto e in fretta: valuta di non operare nei minuti prima e dopo. Gli eventi in dollari (USD) sono quelli che contano di più per l'oro.</p>
+      <p class="muted small">Solo gli eventi "rossi" (impatto alto) che fanno muovere i mercati: tassi, inflazione, lavoro USA, discorsi delle banche centrali. Orari in ora italiana. Attorno a questi eventi l'oro può muoversi molto e in fretta: valuta di non operare nei minuti prima e dopo. Gli eventi in dollari (USD) sono quelli che contano di più per l'oro. <b>Tocca un evento</b> per vedere cosa può succedere all'oro nei vari scenari.</p>
       <div id="calList"></div>
       <p class="muted small" id="calUpd"></p>
+    </div>
+    <div class="card" id="pmCard">
+      <h3>Cosa scommette il mercato sui tassi</h3>
+      <p class="muted small">Probabilità che il mercato di previsione Polymarket assegna alle prossime decisioni della Fed. Sono scommesse con soldi veri: un termometro delle aspettative, non una previsione nostra e non una certezza. I tassi contano molto per l'oro: tassi più alti di solito lo penalizzano, tagli lo aiutano.</p>
+      <div id="pmList"></div>
+      <p class="muted small" id="pmUpd"></p>
     </div>
     <div class="card" id="scanCard">
       <h3>Scanner titoli e cripto</h3>
@@ -176,9 +182,20 @@
         <div class="ctl-label">Come potrebbe andare da oggi a fine periodo (fascia = 80% dei casi)</div><canvas id="cvOpProj" class="cv short"></canvas>
         <div class="ctl-label" style="margin-top:12px">Dove potrebbe chiudere il periodo</div><canvas id="cvOpProjH" class="cv short"></canvas>
         <p class="muted small" id="opProjNote"></p></div>
+      <div class="card"><h3>Depositi e prelievi</h3>
+        <div class="row gap" style="align-items:flex-end;flex-wrap:wrap">
+          <label class="small">Tipo <select id="movType"><option value="w">Prelievo</option><option value="d">Deposito</option></select></label>
+          <label class="small">Data <input id="movDate" type="date"></label>
+          <label class="small">Importo (€) <input id="movAmt" type="text" inputmode="decimal" autocomplete="off" placeholder="es. 500"></label>
+          <button class="btn primary" id="movAdd">Aggiungi</button>
+        </div>
+        <div id="movStats" class="statrow" style="margin-top:10px"></div>
+        <div id="movList"></div>
+        <p class="muted small">Segni tu i movimenti, a mano (un prelievo ogni tanto): salvati solo su questo telefono, come le operazioni. Da qui si aggiornano statistiche, capitale stimato, consiglio sul lotto e prospettive.</p>
+      </div>
       <div class="card"><h3>Che lotto usare</h3>
         <p class="muted small">Ti propongo un lotto in base ai soldi che hai e a come hai davvero operato (risultati, perdite peggiori, ritmo).</p>
-        <div class="row gap"><label class="small">Capitale sul conto (€) <input id="opCap" type="number" inputmode="decimal" min="0" placeholder="es. 7000"></label>
+        <div class="row gap"><label class="small">Capitale sul conto (€) <input id="opCap" type="text" inputmode="decimal" autocomplete="off" placeholder="es. 7000"></label>
         <label class="small">Calo massimo accettato <select id="opDdLim"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option></select></label></div>
         <div id="opLot" style="margin-top:10px"></div></div>
       <div class="card"><h3>Confronto tra periodi</h3><canvas id="cvOpPer" class="cv short"></canvas><div id="opPeriods"></div></div>
@@ -213,5 +230,6 @@
 <script src="info.js"></script>
 <script src="calendar.js"></script>
 <script src="scan.js"></script>
+<script src="suggest.js"></script>
 </body>
 </html>

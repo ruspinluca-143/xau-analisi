@@ -145,7 +145,8 @@ window.addEventListener("resize", () => { renderChart(); renderTm(); loadJournal
 function render() {
   const ov = S.ov, d = S.data;
   if (!ov || !d) return;
-  $("#hName").textContent = ov.name + (S.spot ? " · prezzo sul tuo grafico" : "");
+  const tn = window.TICKER_NAMES && window.TICKER_NAMES[S.symbol];
+  $("#hName").textContent = (tn && !ov.gold ? tn + " (" + S.symbol + ")" : ov.name) + (S.spot ? " · prezzo sul tuo grafico" : "");
   $("#hPrice").textContent = fmt(P(ov.info.last));
   const ch = ov.info.change_pct, c = $("#hChange");
   c.textContent = (ch >= 0 ? "▲ " : "▼ ") + Math.abs(ch).toFixed(2).replace(".", ",") + "% oggi"; c.className = "delta " + (ch >= 0 ? "up" : "down");
