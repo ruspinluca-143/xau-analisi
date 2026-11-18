@@ -689,14 +689,24 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#opp
 
 /* ---------- segnali automatici (registro scritto dal controllo su GitHub) ---------- */
 const LOG_URL = "https://raw.githubusercontent.com/ruspinluca-143/xau-analisi/dati/log.json";
-let AUTO = null;
+let AUTO = null, AF = "all";
+/* archivio sul telefono: ogni segnale visto dal server resta qui anche se il server si azzera (riavvio, nuova pubblicazione) */
+function archiveMerge(list) {
+  let ar = {}; try { ar = JSON.parse(localStorage.getItem("xau_archive_v1") || "{}"); } catch (e) { ar = {}; }
+  list.forEach((x) => { if (x && x.id) ar[x.id] = x; }); // la versione del server (esito aggiornato) vince
+  const now = Date.now() / 1000, arr = Object.values(ar).filter((x) => (x.entry_ts || 0) > now - 120 * 86400).sort((a, b) => b.entry_ts - a.entry_ts).slice(0, 1500);
+  arr.forEach((x) => { if (x.status === "open" && x.entry_ts < now - 3 * 86400) x.status = "nd"; }); // aperto da giorni e senza notizie: esito non determinabile
+  try { localStorage.setItem("xau_archive_v1", JSON.stringify(Object.fromEntries(arr.map((x) => [x.id, x])))); } catch (e) { /* memoria piena: resta la copia del server */ }
+  return arr;
+}
 async function loadAuto() {
   try {
     let r = await fetch("/api/log?t=" + Date.now(), { cache: "no-store" }), mine = [];
     if (r.ok) { try { mine = await r.json(); } catch (e) { mine = []; } }
     if (Array.isArray(mine) && mine.length) AUTO = mine;
     else { r = await fetch(LOG_URL + "?t=" + Date.now(), { cache: "no-store" }); AUTO = r.ok ? await r.json() : []; }
-  } catch (e) { AUTO = null; }
+    AUTO = archiveMerge(Array.isArray(AUTO) ? AUTO : []);
+  } catch (e) { const a = archiveMerge([]); AUTO = a.length ? a : null; } // senza rete restano comunque i segnali già salvati sul telefono
   renderAuto();
 }
 function autoStats(sub) {
@@ -713,15 +723,16 @@ function outPill(x) {
 /* elenco dei segnali: ogni segnale è un blocco che sta tutto nella larghezza dello schermo (niente scorrimento laterale) */
 function sigRows(items) {
   return items.map((x) => `<div class="sigrow">
-    <div class="sr1"><b class="dir ${x.dir === "buy" ? "buy" : "sell"}">${x.dir === "buy" ? "BUY" : "SHORT"}</b> <span>${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</span><span class="when">${tIT(x.entry_ts, true)}</span></div>
+    <div class="sr1"><b class="dir ${x.dir === "buy" ? "buy" : "sell"}">${x.dir === "buy" ? "BUY" : "SHORT"}</b> ${x.symbol && x.symbol !== "XAUUSD" ? "<b>" + String(x.symbol).replace(/[<>&]/g, "") + "</b> " : ""}<span>${x.tf} ${x.setup === "breakout" ? "breakout" : x.setup}</span><span class="when">${tIT(x.entry_ts, true)}</span></div>
     <div class="sr2"><span>Ingresso <b>${fmt(x.entry)}</b></span><span>Stop <b>${fmt(x.stop)}</b></span><span>Target ${x.rr}R <b>${fmt(x.target)}</b></span></div>
-    <div class="sr3">${stancePill(x.stance)}${outPill(x)}</div>
+    <div class="sr3">${stancePill(x.stance)}${x.tier === "possibile" ? '<span class="pill">possibile</span>' : ""}${outPill(x)}</div>
   </div>`).join("");
 }
 function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
-  const all = AUTO.filter((x) => x.stance === "favorevole" && afterReset(x)); // gli altri non si mostrano né si contano
+  const isGold = (x) => !x.symbol || x.symbol === "XAUUSD";
+  const all = AUTO.filter((x) => x.stance === "favorevole" && afterReset(x) && (AF === "all" || (AF === "gold" ? isGold(x) : !isGold(x)))); // gli altri non si mostrano né si contano
   if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
   const fav = all.filter((x) => ["target", "stop", "none"].includes(x.status)), open = all.filter((x) => x.status === "open").length;
   const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
@@ -761,4 +772,10 @@ loadAuto();
   btn.onclick = () => { if (confirm("Azzero il conteggio dei segnali favorevoli da adesso? Quelli vecchi non vengono cancellati: puoi ripristinarli.")) { RESET = Math.floor(Date.now() / 1000); apply(); } };
   undo.onclick = () => { RESET = 0; apply(); };
   show();
+})();
+
+(function () {
+  const el = document.getElementById("autoFilter"); if (!el) return;
+  const build = () => seg(el, [{ label: "Tutti", value: "all" }, { label: "Oro", value: "gold" }, { label: "Titoli e cripto", value: "scan" }], AF, (v) => { AF = v; build(); renderAuto(); });
+  build();
 })();

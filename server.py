@@ -74,6 +74,69 @@ def c2(v, plus=False):
     return (("%+.2f" if plus else "%.2f") % v).replace(".", ",")
 
 
+def why_lines(nm, d, r, b, info, rr, gold):
+    """Perché il giudizio è quello: cosa gioca a favore e cosa contro, in parole semplici, solo dai numeri dell'analisi."""
+    pro, con = [], []
+    need = 1.0 / (1.0 + rr)
+    m, h = b.get("mc"), b.get("hist") or {}
+    if m:
+        hit = m["target"] + m["stop"]
+        if hit >= 0.05:
+            frac = m["target"] / hit
+            if frac - need >= 0.05:
+                pro.append("nelle simulazioni, quando il prezzo tocca uno dei due livelli, arriva prima il target nel %.0f%% dei casi; per non perdere nel lungo periodo ne servirebbe il %.0f%%: c'è un margine" % (frac * 100, need * 100))
+            elif frac - need <= -0.05:
+                con.append("nelle simulazioni il target arriva prima solo nel %.0f%% dei tocchi, ne servirebbe il %.0f%% per non perdere: il rischio pesa più del guadagno" % (frac * 100, need * 100))
+            else:
+                con.append("nelle simulazioni il target arriva prima nel %.0f%% dei tocchi contro il %.0f%% che serve per pareggiare: è un testa o croce, senza margine" % (frac * 100, need * 100))
+        else:
+            con.append("nelle simulazioni il prezzo tocca raramente stop o target nella finestra: l'esito dipende da dove chiude, non dal piano")
+    n = h.get("fired", 0)
+    if n >= 10:
+        se = h.get("se")
+        if se is not None and h["avg_r"] > se:
+            pro.append("lo storico reale (%d casi) dà in media %s R per operazione, più dell'incertezza statistica (±%s): difficilmente è solo fortuna" % (n, c2(h["avg_r"], True), c2(se)))
+        elif se is not None and h["avg_r"] < -se:
+            con.append("lo storico reale (%d casi) dà in media %s R per operazione, sotto zero oltre l'incertezza (±%s): in passato questa regola ha perso" % (n, c2(h["avg_r"], True), c2(se)))
+        else:
+            con.append("lo storico reale (%d casi) dà in media %s R, dentro l'incertezza (±%s): non si distingue dal caso" % (n, c2(h["avg_r"], True), c2(se) if se is not None else "?"))
+    else:
+        con.append("lo storico ha solo %d casi: troppo pochi per fidarsi dei numeri" % n)
+    buy = d == "buy"
+    rsi, sma = info.get("rsi_d"), info.get("sma20_d")
+    if sma:
+        up = info["last"] > sma
+        if up == buy:
+            pro.append("va nella direzione della tendenza di breve: il prezzo è %s la media a 20 giorni" % ("sopra" if up else "sotto"))
+        else:
+            con.append("va contro la tendenza di breve: il prezzo è %s la media a 20 giorni" % ("sopra" if up else "sotto"))
+    if rsi is not None:
+        if buy and rsi >= 70:
+            con.append("l'RSI giornaliero è a %.0f: il prezzo è già salito molto e può essere stanco" % rsi)
+        elif not buy and rsi <= 30:
+            con.append("l'RSI giornaliero è a %.0f: il prezzo è già sceso molto e può essere stanco" % rsi)
+    atr = info.get("atr_d")
+    risk = r.get("risk")
+    if atr and risk:
+        q = risk / atr
+        if q < 0.15:
+            con.append("lo stop è molto stretto (%s, il %.0f%% del movimento normale di una giornata): può scattare per puro rumore" % (fmt_price(risk, gold), q * 100))
+        elif q > 0.6:
+            con.append("lo stop è largo (%s, il %.0f%% del movimento normale di una giornata): serve un movimento grande per arrivare al target" % (fmt_price(risk, gold), q * 100))
+    if r.get("state") == "waiting":
+        con.append("il segnale non è ancora scattato: finché una barra non chiude %s il livello non c'è nessun ingresso da valutare" % ("sopra" if buy else "sotto"))
+    elif r.get("state") == "triggered" and r.get("age_min", 0) > 30:
+        con.append("è scattato da %s: entrare adesso sarebbe in ritardo, con un prezzo peggiore di quello del segnale" % (("%d minuti" % r["age_min"]) if r["age_min"] < 180 else ("%.1f ore" % (r["age_min"] / 60.0))))
+    if b.get("closed"):
+        con.append("il piano teorico si è già chiuso (%s toccato)" % ("target" if b["closed"] == "target" else "stop"))
+    out = []
+    if pro:
+        out.append("%s, perché può avere senso valutarlo: %s." % (nm, "; ".join(pro)))
+    if con:
+        out.append("%s, cosa invece pesa contro: %s." % (nm, "; ".join(con)))
+    return out
+
+
 def explain(name, gold, info, setup, rr, tf=None):
     off = info.get("offset", 0.0)
     P = lambda x: fmt_price(x + off, gold)  # noqa: E731
@@ -137,6 +200,7 @@ def explain(name, gold, info, setup, rr, tf=None):
             "positivo": "storico positivo",
             "negativo": "storico negativo",
             "poco_storico": "pochi casi nello storico per giudicare"}.get(st, st)))
+        out.extend(why_lines(nm, d, r, b, info, rr, gold))
     out.append("Non è una previsione: è quello che sarebbe successo ripetendo le ultime barre reali. Notizie e dati macro possono muovere il prezzo in modi che lo storico non contiene. Non è consulenza finanziaria.")
     return out
 
@@ -434,11 +498,18 @@ def api_polymarket(q):
 
 
 def api_log(q):
+    """Registro dei segnali trovati dal server (oro + scanner di titoli e cripto). Dopo un riavvio si ripristina dal ramo dati."""
     try:
-        with open(os.environ.get("LOG_FILE", "log.json"), encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return []
+        import notify as N
+        items = N.load_log()
+    except Exception:  # noqa: BLE001
+        items = []
+    try:
+        import scanner as SC
+        items = list(items) + SC.history()
+    except Exception:  # noqa: BLE001
+        pass
+    return sorted(items, key=lambda x: x.get("entry_ts", 0))
 
 
 def api_journal(body):
@@ -498,8 +569,8 @@ def api_claude(body):
 import market as MK  # noqa: E402  (quadro di mercato, sessioni, reazione alla Fed, confronto con la regola, livelli personali)
 
 ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket,
-          "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark, "/api/levels": MK.api_levels}
-POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal, "/api/levels": MK.api_levels_post}
+          "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark}
+POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
 HITS = {}  # indirizzo -> orari delle ultime richieste

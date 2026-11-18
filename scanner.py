@@ -3,7 +3,7 @@
 Controlla una lista di circa 100 simboli (grandi titoli USA e cripto principali) sul giornaliero e sull'ora, buy e short, con tutti i target
 da 1R a 5R. Un segnale entra nell'elenco solo se simulazione e storico concordano (come per l'oro). Due livelli: "netto" = almeno 20 casi storici e R medio
 sopra 2 volte l'errore statistico (più severo, perché guardando tanti simboli qualche falso segnale capita per caso); "possibile" = il criterio normale
-dell'oro (almeno 10 casi, R medio sopra l'errore statistico). Gli avvisi sul telefono partono solo per il livello "netto".
+dell'oro (almeno 10 casi, R medio sopra l'errore statistico). Gli avvisi sul telefono partono per entrambi i livelli (il titolo dice "possibile" per il meno severo).
 
     python scanner.py --dry --limit 10    prova su 10 simboli, senza salvare né inviare
     python scanner.py                     scansione completa di giornaliero e ora
@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import engine as E  # noqa: E402
+import persist as PS  # noqa: E402
 
 STOCKS = ("AAPL MSFT NVDA AMZN GOOGL META TSLA AVGO COST NFLX AMD PEP ADBE CSCO TMUS CMCSA INTC QCOM TXN AMGN INTU AMAT HON ISRG BKNG SBUX GILD ADI "
           "VRTX MDLZ REGN LRCX PANW ADP MU KLAC SNPS CDNS PYPL CRWD MELI MAR CSX ORLY ABNB CTAS MRVL NXPI FTNT PCAR WDAY ROP MNST CHTR AEP MCHP PAYX "
@@ -31,15 +32,23 @@ MIN_CASES = 20
 SE_MULT = 2.0
 WORKERS = 3
 OUT = os.environ.get("SCAN_FILE", "scan.json")
+HIST_FILE = os.environ.get("SCAN_HIST_FILE", "scan_hist.json")  # tutti i segnali trovati: restano (con l'esito) anche quando la scansione dopo non li vede più
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 LOCK = threading.Lock()
-STATE = {"running": False, "runs": {}, "signals": {"1d": [], "1h": []}, "seen": [], "errors": {}, "loaded": False}
+STATE = {"running": False, "runs": {}, "signals": {"1d": [], "1h": []}, "seen": [], "errors": {}, "loaded": False, "hist": {}, "last_resolve": 0, "resolving": False}
 
 
 def _load():
     if STATE["loaded"]:
         return
     STATE["loaded"] = True
+    PS.restore(OUT, "scan.json")  # dopo un riavvio si riparte dalla memoria salvata: niente avvisi doppi
+    PS.restore(HIST_FILE, "scan_hist.json")
+    try:
+        with open(HIST_FILE, encoding="utf-8") as fh:
+            STATE["hist"] = {x["id"]: x for x in json.load(fh)}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     try:
         with open(OUT, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -54,8 +63,68 @@ def _save():
     try:
         with open(OUT, "w", encoding="utf-8") as fh:
             json.dump({"runs": STATE["runs"], "signals": STATE["signals"], "seen": STATE["seen"][-800:]}, fh, ensure_ascii=False, separators=(",", ":"))
+        PS.push(OUT, "scan.json")
     except OSError:
         pass
+    _save_hist()
+
+
+def _save_hist():
+    cut = time.time() - 120 * 86400
+    items = sorted((x for x in STATE["hist"].values() if x.get("entry_ts", 0) > cut), key=lambda x: x["entry_ts"])[-1500:]
+    STATE["hist"] = {x["id"]: x for x in items}
+    try:
+        with open(HIST_FILE, "w", encoding="utf-8") as fh:
+            json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
+        PS.push(HIST_FILE, "scan_hist.json")
+    except OSError:
+        pass
+
+
+def _as_log_item(s):
+    """Il segnale dello scanner nello stesso formato del registro dell'oro, così compare tra i "Segnali automatici"."""
+    return {"id": s["id"], "symbol": s["sym"], "setup": "breakout", "tf": s["tf"], "label": "Breakout 20 barre (%s)" % s["tf"], "dir": s["dir"], "rr": s["rr"],
+            "entry": s["entry"], "stop": s["stop"], "target": s["target"], "entry_ts": s["entry_ts"], "hold": HOLD[s["tf"]], "stance": "favorevole",
+            "tier": s["tier"], "sim_target": s["sim_target"], "sim_stop": s["sim_stop"], "hist_n": s["hist_n"], "hist_r": s["hist_r"],
+            "favs": s.get("favs", []), "status": "open", "r": None, "notified": False, "out_sent": False, "src": "scanner"}
+
+
+def history():
+    _load()
+    return list(STATE["hist"].values())
+
+
+def resolve_open(force=False):
+    """Segue i segnali dello scanner fino a target, stop o fine finestra (al massimo ogni 5 minuti) e avvisa dell'esito."""
+    _load()
+    now = time.time()
+    with LOCK:
+        if STATE["resolving"] or (not force and now - STATE["last_resolve"] < 300):
+            return 0
+        STATE["resolving"], STATE["last_resolve"] = True, now
+        items = [x for x in STATE["hist"].values() if x.get("status") == "open"]
+    done = 0
+    try:
+        if items:
+            import notify as N
+            closed = N.resolve(items, None, int(now))
+            for it in closed:
+                done += 1
+                if TOPIC and it.get("notified") and not it.get("out_sent"):
+                    try:
+                        w = {"target": "TARGET preso", "stop": "STOP preso", "none": "finestra finita"}.get(it["status"], it["status"])
+                        _send("ESITO TITOLO %s - %s" % (it["symbol"], w), "%s %s %s: %s, %+.2f R. Solo analisi." % (it["symbol"], "BUY" if it["dir"] == "buy" else "SHORT", it["tf"], w, it["r"] or 0.0),
+                              "white_check_mark" if it["status"] == "target" else "x" if it["status"] == "stop" else "hourglass")
+                        it["out_sent"] = True
+                    except Exception as exc:  # noqa: BLE001
+                        print("  esito non inviato: %s" % exc)
+            if closed:
+                with LOCK:
+                    _save_hist()
+    finally:
+        with LOCK:
+            STATE["resolving"] = False
+    return done
 
 
 def is_crypto(sym):
@@ -149,17 +218,20 @@ def scan(tfs, limit=None, dry=False):
             if not STATE["runs"][tf]["checked"]:  # fonte non raggiungibile: riprovo tra 10 minuti, non a ogni minuto
                 STATE["runs"][tf]["retry"] = now_ts + 600
         fresh = [s for s in found if s["id"] not in STATE["seen"]]
-        new += [s for s in fresh if s["tier"] == "netto"]  # avviso sul telefono solo per il livello netto
-        STATE["seen"] += [s["id"] for s in fresh if s["tier"] != "netto"]
-        print("%s: %d simboli controllati, %d errori, %d segnali (%d netti nuovi) in %ds" % (tf, len(syms) - len(errors), len(errors), len(found), len([s for s in fresh if s["tier"] == "netto"]), time.time() - t0))
+        new += fresh  # avviso sul telefono per ogni segnale favorevole (netto o possibile)
+        with LOCK:
+            for s in found:  # il segnale resta nel registro anche quando la scansione dopo non lo vede più
+                if s["id"] not in STATE["hist"]:
+                    STATE["hist"][s["id"]] = _as_log_item(s)
+        print("%s: %d simboli controllati, %d errori, %d segnali (%d nuovi) in %ds" % (tf, len(syms) - len(errors), len(errors), len(found), len(fresh), time.time() - t0))
     if not dry:
         sent = 0
         if TOPIC and new:
             for s in new[:6]:
                 dn = "BUY" if s["dir"] == "buy" else "SHORT"
-                title = "TITOLO %s - %s %s - target %gR" % (s["sym"], dn, s["tf"], s["rr"])
-                body = ("Segnale con vantaggio dimostrato su %s (%s).\nIngresso %s - Stop %s - Target %s\nSimulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %+.2f.\n"
-                        "Prezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (s["sym"], s["tf"], _fmt(s["entry"]), _fmt(s["stop"]), _fmt(s["target"]),
+                title = "TITOLO %s - %s %s - target %gR%s" % (s["sym"], dn, s["tf"], s["rr"], "" if s["tier"] == "netto" else " (possibile)")
+                body = ("Segnale favorevole su %s (%s), livello %s.\nIngresso %s - Stop %s - Target %s\nSimulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %+.2f.\n"
+                        "Prezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (s["sym"], s["tf"], "netto" if s["tier"] == "netto" else "possibile", _fmt(s["entry"]), _fmt(s["stop"]), _fmt(s["target"]),
                                                                                       s["sim_target"] * 100, s["sim_stop"] * 100, s["hist_n"], s["hist_r"]))
                 try:
                     _send(title, body, "chart_with_upwards_trend" if s["dir"] == "buy" else "chart_with_downwards_trend")
@@ -173,6 +245,9 @@ def scan(tfs, limit=None, dry=False):
                     print("  invio riepilogo non riuscito: %s" % exc)
         with LOCK:
             STATE["seen"] += [s["id"] for s in new]
+            for s in new:
+                if s["id"] in STATE["hist"] and TOPIC:
+                    STATE["hist"][s["id"]]["notified"] = True
             _save()
         print("Notifiche inviate: %d" % sent)
     return new
@@ -197,6 +272,7 @@ def due(now=None):
 
 def maybe_start():
     """Chiamata a ogni controllo automatico (ogni minuto): se è ora, avvia la scansione in un thread."""
+    threading.Thread(target=resolve_open, daemon=True).start()  # esiti dei segnali già trovati (ogni 5 minuti al massimo)
     with LOCK:
         if STATE["running"]:
             return False

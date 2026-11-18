@@ -4,7 +4,6 @@
  - api_sessions  : volatilità dell'oro per ora e per sessione (Asia, Londra, New York), ora italiana, da 2 anni di dati orari
  - api_fomc      : come ha reagito l'oro nell'ora e nelle due ore dopo ogni decisione della Fed (date note, dati orari)
  - api_benchmark : cosa avrebbe dato la regola base di breakout dell'app in un periodo (per il confronto con i tuoi risultati)
- - api_levels    : livelli di prezzo e scatto improvviso scelti da Luca; check_alerts() li controlla a ogni giro del server
 Dati gratuiti di Yahoo (e, per i minuti più recenti dell'oro, il feed in engine.py). Solo libreria standard.
 """
 import datetime as dt
@@ -17,8 +16,6 @@ import time
 import engine as E
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(ROOT, "data")
-LEVELS_FILE = os.path.join(DATA, "levels.json")
 _lock = threading.Lock()
 _cache = {}
 
@@ -233,125 +230,3 @@ def api_benchmark(q):
                 "avg_risk": sum(c["risk"] for c in cases) / n if n else None, "cases": cases[-400:],
                 "first": bars[0][0] if bars else None}
     return cached(key, 300, build)
-
-
-# ---------------------------------------------------------------- livelli personali e scatto improvviso
-def _load_levels():
-    try:
-        with open(LEVELS_FILE, encoding="utf-8") as fh:
-            d = json.load(fh)
-    except (OSError, ValueError):
-        d = {}
-    d.setdefault("levels", [])
-    d.setdefault("spike", 15.0)
-    d.setdefault("last_spike", 0)
-    return d
-
-
-def _save_levels(d):
-    try:
-        os.makedirs(DATA, exist_ok=True)
-        with open(LEVELS_FILE, "w", encoding="utf-8") as fh:
-            json.dump(d, fh)
-    except OSError:
-        pass
-
-
-def _live_gold():
-    now_ts = E.epoch(E.now_utc())
-    bars, meta = E.get_bars("GC=F", "1m", now_ts)
-    return now_ts, bars, meta
-
-
-def api_levels(q):
-    with _lock:
-        d = _load_levels()
-    try:
-        now_ts, bars, meta = _live_gold()
-        price = meta.get("regularMarketPrice")
-    except Exception:  # noqa: BLE001
-        price = None
-    return {"levels": [x for x in d["levels"] if not x.get("done")], "spike": d["spike"], "price": price}
-
-
-def api_levels_post(body):
-    act = body.get("action")
-    with _lock:
-        d = _load_levels()
-        if act == "add":
-            try:
-                p = float(body.get("price"))
-            except (TypeError, ValueError):
-                return {"error": "Scrivi un prezzo valido."}
-            _, _, meta = _live_gold()
-            cur = meta.get("regularMarketPrice")
-            if not cur or abs(p / cur - 1.0) > 0.15:
-                return {"error": "Il livello è troppo lontano dal prezzo di oggi."}
-            if len([x for x in d["levels"] if not x.get("done")]) >= 8:
-                return {"error": "Massimo 8 livelli attivi: eliminane uno."}
-            d["levels"].append({"id": "L%d" % int(time.time() * 1000), "price": round(p, 2), "side": "above" if p > cur else "below",
-                                "note": str(body.get("note", ""))[:60], "created": int(time.time()), "done": False})
-        elif act == "del":
-            d["levels"] = [x for x in d["levels"] if x.get("id") != body.get("id")]
-        elif act == "spike":
-            try:
-                v = float(body.get("value"))
-            except (TypeError, ValueError):
-                return {"error": "Valore non valido."}
-            d["spike"] = max(0.0, min(200.0, v))
-        else:
-            return {"error": "Azione sconosciuta."}
-        d["levels"] = [x for x in d["levels"] if not x.get("done") or time.time() - x.get("done_ts", 0) < 86400][-30:]
-        _save_levels(d)
-    return api_levels({})
-
-
-def check_alerts(send, can_send, now_ts=None):
-    """Chiamata a ogni giro del server (ogni minuto): livelli toccati e scatti improvvisi del prezzo dell'oro."""
-    now_ts, bars, meta = _live_gold()
-    if not bars or now_ts - (meta.get("regularMarketTime") or 0) > 900:
-        return 0  # mercato chiuso o dati fermi
-    price = meta.get("regularMarketPrice")
-    sent = 0
-    with _lock:
-        d = _load_levels()
-        changed = False
-        for x in d["levels"]:
-            if x.get("done"):
-                continue
-            recent = [b for b in bars[-4:] if b[0] >= x.get("created", 0)]  # solo i minuti dopo la creazione del livello
-            hi = max([b[E.H] for b in recent] + [price])
-            lo = min([b[E.L] for b in recent] + [price])
-            hit =(x["side"] == "above" and hi >= x["price"]) or (x["side"] == "below" and lo <= x["price"])
-            if hit:
-                title = "Livello %s toccato" % ("%.2f" % x["price"]).replace(".", ",")
-                body = "L'oro e' a %s. %s\nTi avviso una volta sola. Solo analisi: la decisione e' tua." % (("%.2f" % price).replace(".", ","), x.get("note", ""))
-                print("Livello toccato: %s" % title)
-                if can_send:
-                    try:
-                        send(title, body, "dart")
-                        sent += 1
-                    except Exception as exc:  # noqa: BLE001
-                        print("  avviso livello non inviato: %s" % exc)
-                        continue
-                x["done"], x["done_ts"] = True, now_ts
-                changed = True
-        thr = float(d.get("spike") or 0)
-        if thr > 0 and len(bars) >= 7 and now_ts - d.get("last_spike", 0) > 1200:
-            ref = bars[-6][E.C]
-            mv = price - ref
-            if abs(mv) >= thr:
-                title = "L'oro si e' mosso %s$ in 5 minuti" % (("%+.1f" % mv).replace(".", ","))
-                body = "Da %s a %s. Movimento fuori dal normale: di solito segue una notizia. Solo analisi." % (("%.1f" % ref).replace(".", ","), ("%.1f" % price).replace(".", ","))
-                print("Scatto improvviso: %s" % title)
-                if can_send:
-                    try:
-                        send(title, body, "zap")
-                        sent += 1
-                        d["last_spike"] = now_ts
-                        changed = True
-                    except Exception as exc:  # noqa: BLE001
-                        print("  avviso scatto non inviato: %s" % exc)
-        if changed:
-            _save_levels(d)
-    return sent

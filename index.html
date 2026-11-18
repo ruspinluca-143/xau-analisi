@@ -139,7 +139,8 @@
     </div>
     <div class="card" id="autoCard">
       <h3>Segnali automatici (anche con l'app chiusa)</h3>
-      <p class="muted small">I segnali favorevoli che il controllo automatico ha visto, con com'è andata. È il tuo backtest in tempo reale: anche quelli che non hai visto.</p>
+      <p class="muted small"><b>Tutti</b> i segnali favorevoli che il server ha trovato da solo, ogni minuto, anche con l'app chiusa e anche quelli che non hai visto: è l'elenco completo e uguale per tutti i tuoi dispositivi. Per ognuno vedi com'è andata (target, stop o ancora aperto).</p>
+      <div class="seg small" id="autoFilter" style="margin:4px 0 8px"></div>
       <div id="autoStats" class="statrow"></div>
       <canvas id="cvAuto" class="cv short"></canvas>
       <div id="autoStance" class="statrow"></div>
@@ -153,9 +154,8 @@
       <canvas id="cvEq" class="cv short"></canvas>
       <div id="jStance" class="statrow"></div>
       <div id="jTable" class="tablewrap"></div>
-      <p class="muted small">Ogni segnale che l'app ti ha mostrato viene salvato e poi seguito fino a target, stop o fine finestra. R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop).</p>
+      <p class="muted small"><b>Solo quelli che hai visto tu</b> con l'app aperta su questo telefono: ogni segnale che l'app ti ha mostrato viene salvato qui e seguito fino a target, stop o fine finestra. È il tuo diario personale; i "Segnali automatici" qui sopra sono invece l'elenco completo del server. R = multipli del rischio (+2 = guadagno pari a 2 volte il rischio, -1 = stop).</p>
     </div>
-    <div class="card" id="lvCard"><h3>I tuoi livelli e scatti improvvisi</h3><div id="lvBody"></div></div>
     <div class="card" id="ctxCard"><h3>Quadro di mercato</h3><div id="ctxBody"></div></div>
     <div class="card" id="sesCard"><h3>Sessioni dell'oro</h3><div id="sesBody"></div></div>
     <div class="card" id="fedCard"><h3>Come ha reagito l'oro alla Fed</h3><div id="fedBody"></div></div>

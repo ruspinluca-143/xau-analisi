@@ -20,6 +20,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import engine as E  # noqa: E402
+import persist as PS  # noqa: E402
 
 SYMBOL = os.environ.get("XAU_SYMBOL", "XAUUSD")
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
@@ -42,6 +43,7 @@ def sgn(x):
 
 
 def load_log():
+    PS.restore(LOG_FILE, "log.json")  # dopo un riavvio del server il registro si ripristina dal ramo dati
     try:
         with open(LOG_FILE, encoding="utf-8") as fh:
             return json.load(fh)
@@ -57,6 +59,7 @@ def save_log(items):
         os.makedirs(d, exist_ok=True)
     with open(LOG_FILE, "w", encoding="utf-8") as fh:
         json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
+    PS.push(LOG_FILE, "log.json")
 
 
 def closed_bars(ys, tf, now_ts):
@@ -165,9 +168,10 @@ def resolve(items, ys, now_ts):
         if it["status"] != "open":
             continue
         try:
-            if it["tf"] not in cache:
-                cache[it["tf"]] = closed_bars(ys, it["tf"], now_ts)
-            bars = cache[it["tf"]]
+            sy = E.yahoo_symbol(it["symbol"]) if it.get("symbol") else ys  # i segnali dello scanner portano il loro simbolo
+            if (sy, it["tf"]) not in cache:
+                cache[(sy, it["tf"])] = closed_bars(sy, it["tf"], now_ts)
+            bars = cache[(sy, it["tf"])]
             idx = next((i for i, b in enumerate(bars) if b[0] == it["entry_ts"]), None)
             if idx is None:
                 if now_ts - it["entry_ts"] > 3 * 86400:
@@ -194,6 +198,7 @@ REM_CUR = [c.strip().upper() for c in os.environ.get("CAL_CUR", "USD,EUR,GBP").s
 
 
 def _load_rem():
+    PS.restore(REM_FILE, "reminders.json")
     try:
         with open(REM_FILE, encoding="utf-8") as fh:
             return json.load(fh)
@@ -207,6 +212,7 @@ def _save_rem(d):
     try:
         with open(REM_FILE, "w", encoding="utf-8") as fh:
             json.dump(d, fh)
+        PS.push(REM_FILE, "reminders.json")
     except OSError:
         pass
 
@@ -275,11 +281,6 @@ def run(topic=None, calendar=None):
         reminders(calendar, now_u, now_ts, can_send)
     except Exception as exc:  # noqa: BLE001
         print("Promemoria non riusciti: %s" % exc)
-    try:  # livelli di prezzo e scatti improvvisi scelti da Luca (market.py)
-        import market as MK
-        MK.check_alerts(send, can_send)
-    except Exception as exc:  # noqa: BLE001
-        print("Livelli/scatti non controllati: %s" % exc)
     try:
         bars, _ = E.get_bars(ys, "5m", now_ts)
     except Exception as exc:  # noqa: BLE001

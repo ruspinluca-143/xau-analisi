@@ -1,4 +1,4 @@
-/* Quadro di mercato: semaforo del giorno, dollaro/rendimenti, sessioni dell'oro, reazione alla Fed, livelli e scatti improvvisi.
+/* Quadro di mercato: semaforo del giorno, dollaro/rendimenti, sessioni dell'oro, reazione alla Fed.
    Solo analisi: misure sul passato e avvisi che scegli tu. Nessun ordine, nessuna previsione. */
 (function () {
   const $ = (s) => document.querySelector(s);
@@ -9,8 +9,6 @@
   const pc = (x, d = 0) => (x == null ? "–" : (x * 100).toFixed(d).replace(".", ",") + "%");
   const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
   const get = async (u) => { const r = await fetch(u, { cache: "no-store" }), j = await r.json(); if (!r.ok) throw new Error(j.error || "errore"); return j; };
-  const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }), j = await r.json(); if (!r.ok || j.error) throw new Error(j.error || "errore"); return j; };
-  const offs = () => (typeof off === "function" ? off() : 0);
   let CTX = null, CAL = null;
 
   /* ---------- semaforo del giorno (sotto il prezzo) + quadro di mercato ---------- */
@@ -79,39 +77,9 @@
   }
   async function loadFed() { try { FED = await get("/api/fomc"); } catch (e) { const el = $("#fedBody"); if (el && !FED) el.innerHTML = `<p class="muted">Non riesco a leggere i dati adesso (${esc(e.message)}).</p>`; return; } fedCard(); }
 
-  /* ---------- livelli personali e scatti improvvisi ---------- */
-  let LV = null, lvMsg = "";
-  function keyLevels() {
-    if (typeof S === "undefined" || !S.ov || !S.ov.gold) return [];
-    const i = S.ov.info, o = offs(), price = i.last + o, ks = [["Massimo di ieri", i.prev_hi], ["Minimo di ieri", i.prev_lo], ["Massimo 20 giorni", i.hi20_d], ["Minimo 20 giorni", i.lo20_d]].filter((x) => x[1] != null).map(([l, v]) => [l, v + o]);
-    const base = Math.round(price / 50) * 50; [-100, -50, 0, 50, 100].forEach((d) => ks.push(["Numero tondo", base + d]));
-    return ks.sort((a, b) => b[1] - a[1]).map(([l, v]) => ({ l, v, d: v - price }));
-  }
-  function lvCard() {
-    const el = $("#lvBody"); if (!el) return;
-    const focus = document.activeElement && el.contains(document.activeElement);
-    if (focus) return; // non toccare i campi mentre si scrive
-    const price = LV && LV.price != null ? LV.price + offs() : null;
-    const kl = keyLevels();
-    el.innerHTML = `<p class="muted small">Scegli tu i prezzi che ti interessano: ti mando una notifica (anche con l'app chiusa) quando l'oro li tocca, una volta sola. In più ti avviso se l'oro scatta di colpo. Prezzi sulla stessa scala di quello che vedi in alto${price ? " (adesso <b>" + n2(price, 1) + "</b>)" : ""}.</p>
-      <div class="row gap"><label class="small">Livello <input id="lvPrice" type="text" inputmode="decimal" placeholder="es. 3750" autocomplete="off"></label><label class="small">Nota <input id="lvNote" type="text" placeholder="facoltativa" maxlength="60"></label><button class="btn primary" id="lvAdd">Avvisami</button></div>
-      <p class="small" id="lvMsg">${esc(lvMsg)}</p>
-      <div id="lvList">${LV && LV.levels.length ? LV.levels.map((x) => `<div class="sigrow"><div class="sr1"><b>${n2(x.price + offs(), 1)}</b><span>${x.side === "above" ? "quando sale fin lì" : "quando scende fin lì"}</span>${x.note ? "<span>" + esc(x.note) + "</span>" : ""}<button class="btn" data-lvdel="${x.id}" style="margin-left:8px;height:30px;padding:0 10px;font-size:12px">Elimina</button></div></div>`).join("") : '<p class="muted small">Nessun livello attivo.</p>'}</div>
-      <div class="ctl-label" style="margin-top:8px">Scatto improvviso</div>
-      <div class="row gap"><label class="small">Avvisami se l'oro si muove di più di (dollari in 5 minuti; 0 = spento) <input id="lvSpike" type="text" inputmode="decimal" value="${LV ? LV.spike : 15}" autocomplete="off"></label><button class="btn" id="lvSpikeSave">Salva</button></div>
-      ${kl.length ? `<div class="ctl-label" style="margin-top:8px">Livelli chiave vicini</div>${kl.map((k) => `<div class="sigrow"><div class="sr1"><b>${esc(k.l)}</b><span>${n2(k.v, 1)}</span><span class="when ${k.d >= 0 ? "g" : "r"}">${sg(k.d, 1)} $</span><button class="btn" data-lvadd="${k.v.toFixed(1)}" style="margin-left:8px;height:30px;padding:0 10px;font-size:12px">Avvisami</button></div></div>`).join("")}` : ""}
-      <p class="muted small">Gli avvisi li manda il server ogni minuto, con l'app chiusa; servono le notifiche già collegate (ntfy). Massimo 8 livelli. Solo analisi: l'avviso ti dice che il prezzo è lì, la decisione è tua.</p>`;
-    const add = async (p, note) => { try { LV = await post("/api/levels", { action: "add", price: p - offs(), note }); lvMsg = "Fatto: ti avviso quando arriva a " + n2(p, 1) + "."; } catch (e) { lvMsg = e.message; } lvCard(); };
-    $("#lvAdd").onclick = () => { const p = parseFloat(String($("#lvPrice").value).replace(",", ".")); if (!(p > 0)) { lvMsg = "Scrivi un prezzo valido."; return lvCard(); } add(p, $("#lvNote").value); };
-    el.querySelectorAll("[data-lvadd]").forEach((b) => (b.onclick = () => add(parseFloat(b.dataset.lvadd), "")));
-    el.querySelectorAll("[data-lvdel]").forEach((b) => (b.onclick = async () => { try { LV = await post("/api/levels", { action: "del", id: b.dataset.lvdel }); lvMsg = "Livello eliminato."; } catch (e) { lvMsg = e.message; } lvCard(); }));
-    $("#lvSpikeSave").onclick = async () => { const v = parseFloat(String($("#lvSpike").value).replace(",", ".")); try { LV = await post("/api/levels", { action: "spike", value: isNaN(v) ? 15 : v }); lvMsg = v > 0 ? "Ti avviso se l'oro si muove più di " + n2(v, 0) + " $ in 5 minuti." : "Avviso di scatto spento."; } catch (e) { lvMsg = e.message; } lvCard(); };
-  }
-  async function loadLv() { try { LV = await get("/api/levels"); } catch (e) { lvMsg = "Non riesco a leggere i livelli adesso (" + e.message + ")."; } lvCard(); }
-
-  const onTab = () => { const t = document.body.dataset.tab; if (t === "avvisi") { loadCtx(); loadSes(); loadFed(); loadLv(); } };
+  const onTab = () => { const t = document.body.dataset.tab; if (t === "avvisi") { loadCtx(); loadSes(); loadFed(); } };
   new MutationObserver(onTab).observe(document.body, { attributes: true, attributeFilter: ["data-tab"] });
   window.addEventListener("resize", () => { sesCard(); });
   loadCtx(); setInterval(() => { if (!document.hidden) loadCtx(); }, 180000);
-  setTimeout(() => { loadSes(); loadFed(); loadLv(); }, 1500);
+  setTimeout(() => { loadSes(); loadFed(); }, 1500);
 })();
