@@ -399,6 +399,58 @@
     cv._hit = (x) => { const i = Math.floor((x - ml) / bw), it = items[i]; if (!it || x > w - mr) return null; return `<b>${it.t}</b><br>Risultato: <b class="${cls(it.v)}">${sg(it.v)}</b>` + (it.d ? "<br>" + it.d : ""); };
   }
 
+  /* ---------- analisi dei risultati: numeri e osservazioni sulle abitudini (solo analisi, nessun consiglio operativo) ---------- */
+  function maxDD(list) { let run = 0, peak = 0, dd = 0; list.forEach((t) => { run += t.net; if (run > peak) peak = run; if (peak - run > dd) dd = peak - run; }); return dd; }
+  function analysis(pool) {
+    const el = document.querySelector("#opAnalysis"); if (!el) return;
+    const L = pool.filter((t) => !t.kind).sort((a, b) => a.ct - b.ct);
+    if (L.length < 30) { el.innerHTML = '<p class="muted">Servono almeno 30 operazioni per l\'analisi.</p>'; return; }
+    const add = (a, t) => a + t.net, S = stats(pool), tot = L.reduce(add, 0);
+    const prov = L.filter((t) => t.src === "video").length, real = L.length - prov;
+    const payoff = S.avgW && S.avgL ? S.avgW / -S.avgL : null;
+    const byNet = [...L].sort((a, b) => b.net - a.net), top3 = byNet.slice(0, 3).reduce(add, 0), noTop = S.net - top3;
+    const box = (a, b, k) => `<div class="stat"><span>${a}</span><b class="${k || ""}">${b}</b></div>`;
+    // periodi: lotto medio, perdita media, calo massimo
+    const starts = [...new Set(pool.map((t) => periodStart(t.ct)))].sort((a, b) => a - b);
+    const per = starts.map((st) => { const l = L.filter((t) => periodStart(t.ct) === st), x = stats(pool.filter((t) => periodStart(t.ct) === st)); const lots = l.filter((t) => t.vol > 0); return { st, n: l.length, net: x.net, lot: lots.length ? lots.reduce((a, t) => a + t.vol, 0) / lots.length : null, avgL: x.avgL, dd: maxDD(l), prov: l.filter((t) => t.src === "video").length }; });
+    // giorni: tanti contro pochi trade
+    const byDay = new Map(); L.forEach((t) => { const k = Math.floor(t.ct / 86400000), o = byDay.get(k) || { net: 0, n: 0 }; o.net += t.net; o.n++; byDay.set(k, o); });
+    const days = [...byDay.entries()], ns = days.map((d) => d[1].n).sort((a, b) => a - b), med = ns[Math.floor(ns.length / 2)];
+    const busy = days.filter((d) => d[1].n > med), calm = days.filter((d) => d[1].n <= med);
+    const avgNet = (a) => (a.length ? a.reduce((q, d) => q + d[1].net, 0) / a.length : 0);
+    const worstD = [...days].sort((a, b) => a[1].net - b[1].net)[0];
+    // dopo una vincita / dopo una perdita
+    let aw = 0, awn = 0, al = 0, aln = 0; for (let i = 1; i < L.length; i++) { if (L[i - 1].net > 0) { awn++; if (L[i].net > 0) aw++; } else if (L[i - 1].net < 0) { aln++; if (L[i].net > 0) al++; } }
+    // posizioni tenute oltre 24 ore (solo dove l'apertura è vera)
+    const held = L.filter((t) => t.src !== "video" && t.ct - t.ot > 86400000);
+    // giorni della settimana e ore di chiusura
+    const grp = (f, keys) => keys.map((k) => { const l = L.filter((t) => f(t) === k); return { k, n: l.length, net: l.reduce(add, 0), win: l.length ? l.filter((t) => t.net > 0).length / l.length : null }; }).filter((x) => x.n);
+    const wd = grp((t) => new Date(t.ct).getUTCDay(), [1, 2, 3, 4, 5]), hr = grp((t) => new Date(t.ct).getUTCHours(), Array.from({ length: 24 }, (_, i) => i));
+    const wdS = [...wd].sort((a, b) => a.net - b.net), hrS = hr.filter((x) => x.n >= 30).sort((a, b) => a.net - b.net);
+    const dirs = ["buy", "sell"].map((d) => ({ d, ...(() => { const x = stats(pool.filter((t) => t.dir === d)); return { n: x.n, net: x.net, win: x.win }; })() }));
+    // osservazioni
+    const obs = [];
+    if (payoff != null) obs.push(`<b>Vincite piccole, perdite più grandi.</b> Il payoff (vincita media / perdita media) è <b>${num(payoff)}</b>${payoff < 1.3 ? ": il risultato regge grazie alla percentuale di vinte, non alla dimensione delle vincite" : ""}. I 3 migliori trade valgono ${sg(top3)} su ${sg(S.net)}: senza di loro il totale sarebbe <b class="${cls(noTop)}">${sg(noTop)}</b>${noTop <= 0 ? " (cioè il risultato dipende da pochi trade)" : ""}. Il giorno peggiore (${dd2(worstD[0])}) ha fatto ${num(worstD[1].net)} con ${worstD[1].n} operazioni.`);
+    const pl = per.filter((p) => p.lot && p.n >= 30);
+    if (pl.length >= 2) { const a = pl[0], b = pl[pl.length - 1], g = b.lot / a.lot - 1; obs.push(`<b>Lotti e rischio.</b> Il lotto medio è passato da ${num(a.lot, 3)} a ${num(b.lot, 3)} (${g >= 0 ? "+" : ""}${Math.round(g * 100)}%), la perdita media da ${num(a.avgL || 0)} a ${num(b.avgL || 0)} e il calo massimo da ${num(a.dd)} a ${num(b.dd)}. ${g > 0.2 && b.dd > a.dd ? "L'esposizione è cresciuta insieme al calo massimo: i numeri non dicono che il lotto sia la causa, ma il rischio è salito." : "Non si vede un aumento netto dell'esposizione."}`); }
+    obs.push(`<b>Quante operazioni al giorno.</b> ${busy.length ? `Nei giorni con più di ${med} operazioni la media è <b class="${cls(avgNet(busy))}">${sg(avgNet(busy))}</b> al giorno (${busy.length} giorni), negli altri <b class="${cls(avgNet(calm))}">${sg(avgNet(calm))}</b> (${calm.length} giorni).` : `Fai di solito ${med} operazioni al giorno, con poca differenza da un giorno all'altro.`}${wdS.length > 1 && wdS[0].net < 0 ? ` Giorno della settimana più debole: <b>${GIORNI[wdS[0].k]}</b> (${sg(wdS[0].net)} su ${wdS[0].n} operazioni).` : ""}${hrS.length && hrS[0].net < 0 ? ` Ora di chiusura più debole: <b>${hrS[0].k}:00</b> (${sg(hrS[0].net)} su ${hrS[0].n}).` : ""} Con pochi mesi di storico può essere solo rumore.`);
+    const lim = [];
+    if (prov) lim.push(`${prov} operazioni su ${L.length} sono provvisorie (da video): l'estratto mensile le sostituirà con i dati veri`);
+    if (!L.some((t) => t.comm)) lim.push("le commissioni non risultano nei dati (zero)");
+    lim.push("lo stop loss non è nei dati caricati, quindi l'R per operazione non si può calcolare");
+    if (prov) lim.push("sulle righe da video l'orario di apertura non è vero: durate e ore di apertura non sono affidabili");
+    el.innerHTML = '<div class="statrow">'
+      + box("Operazioni analizzate", L.length) + box("Dati veri / provvisori", real + " / " + prov) + box("Netto totale", sg(S.net), cls(S.net))
+      + box("Payoff", payoff == null ? "–" : num(payoff)) + box("Profit factor", S.pf == null ? "–" : S.pf === Infinity ? "∞" : num(S.pf)) + box("Senza i 3 migliori", sg(noTop), cls(noTop))
+      + box("Vinta dopo una vincita", awn ? pct(aw / awn) : "–") + box("Vinta dopo una perdita", aln ? pct(al / aln) : "–") + box("Tenute oltre 24 ore", held.length ? held.length + " (" + sg(held.reduce(add, 0)) + ")" : real ? "0" : "–")
+      + "</div>"
+      + '<div class="ctl-label" style="margin-top:10px">Periodo per periodo</div>'
+      + per.slice().reverse().map((p) => `<div class="sigrow"><div class="sr1"><b>${periodLabel(p.st)}</b><span class="when ${cls(p.net)}" style="font-weight:700">${sg(p.net)}</span></div><div class="sr2"><span>Operazioni <b>${p.n}</b></span><span>Lotto medio <b>${p.lot ? num(p.lot, 3) : "–"}</b></span><span>Perdita media <b>${p.avgL ? num(p.avgL) : "–"}</b></span><span>Calo massimo <b>${num(p.dd)}</b></span>${p.prov ? `<span>Provvisorie <b>${p.prov}</b></span>` : ""}</div></div>`).join("")
+      + '<div class="ctl-label" style="margin-top:10px">BUY e SHORT</div><p class="small">' + dirs.filter((x) => x.n).map((x) => `<b class="dir ${x.d}">${x.d === "buy" ? "BUY" : "SHORT"}</b> ${sg(x.net)} (${x.n} operazioni, vinte ${pct(x.win)})`).join(" · ") + "</p>"
+      + '<div class="ctl-label" style="margin-top:10px">Osservazioni sulle abitudini</div>' + obs.map((o, i) => `<p class="small"><b>${i + 1}.</b> ${o}</p>`).join("")
+      + `<p class="muted small"><b>Limiti di questa analisi:</b> ${lim.join("; ")}. È una lettura dei tuoi risultati passati: non dice cosa fare sulle prossime operazioni.</p>`;
+  }
+
   /* ---------- schermata ---------- */
   function render() {
     updateCount();
@@ -450,6 +502,7 @@
       const x = stats(pool.filter((t) => periodStart(t.ct) === st));
       return `<div class="sigrow"><div class="sr1"><b>${periodLabel(st)}</b><span class="when ${cls(x.net)}" style="font-weight:700">${sg(x.net)}</span></div><div class="sr2"><span>Dopo tasse <b>${sg(afterTax(x.net))}</b></span><span>Operazioni <b>${x.n}</b></span><span>Vinte <b>${pct(x.win)}</b></span><span>Profit factor <b>${x.pf == null ? "–" : x.pf === Infinity ? "∞" : num(x.pf)}</b></span></div></div>`;
     }).join("");
+    analysis(pool);
     projection(pool);
     movements();
     lotAdvice(pool);
