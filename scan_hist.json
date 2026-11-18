@@ -1,1 +1,1 @@
-[]
+[{"id":"PANW|1h|buy|1795033800","symbol":"PANW","setup":"breakout","tf":"1h","label":"Breakout 20 barre (1h)","dir":"buy","rr":2.0,"entry":341.4100036621094,"stop":333.6899653843471,"target":356.85008021763394,"entry_ts":1795033800,"hold":24,"stance":"favorevole","tier":"possibile","sim_target":0.363,"sim_stop":0.579,"hist_n":105,"hist_r":0.19,"favs":[[2.0,356.85008021763394]],"status":"open","r":null,"notified":true,"out_sent":false,"src":"scanner"}]
