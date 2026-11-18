@@ -142,6 +142,79 @@ def fetch(sym, interval, rng, ttl=40):
     raise RuntimeError("Errore di rete leggendo Yahoo (%s): %s" % (sym, last))
 
 
+# ---------------------------------------------------------------- prezzo dell'oro quasi in tempo reale
+# Yahoo ritarda il future dell'oro di circa 10 minuti. Per l'oro i minuti mancanti si prendono da PAXG (token
+# ancorato all'oro, quotato di continuo su Binance, solo lettura, senza chiavi) e si riportano sulla scala di Yahoo
+# con la differenza media degli ultimi minuti in comune. Se il feed non risponde si usa Yahoo come prima.
+_live_c = {}
+_ISEC = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600, "1h": 3600}
+
+
+def paxg_1m(ttl=8):
+    now = time.time()
+    with _lock:
+        c = _live_c.get("c")
+    if c and now - c[0] < ttl:
+        return c[1]
+    for host in ("data-api.binance.vision", "api.binance.com"):
+        try:
+            req = urllib.request.Request("https://%s/api/v3/klines?symbol=PAXGUSDT&interval=1m&limit=1000" % host, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=8) as r:
+                k = json.load(r)
+            bars = [(int(x[0] / 1000), float(x[1]), float(x[2]), float(x[3]), float(x[4])) for x in k]
+            with _lock:
+                _live_c["c"] = (now, bars)
+            return bars
+        except Exception:  # noqa: BLE001
+            continue
+    return c[1] if c and now - c[0] < 120 else None
+
+
+def live_extend(ysym, raw, meta, interval, now_ts):
+    """Aggiunge a `raw` (barre Yahoo) i minuti più recenti presi dal feed live. Restituisce (raw, meta)."""
+    if not is_gold(ysym) or not raw:
+        return raw, meta
+    ymt = meta.get("regularMarketTime") or 0
+    if now_ts - ymt > 1800:  # mercato chiuso o Yahoo fermo: non si inventano barre
+        return raw, meta
+    px = paxg_1m()
+    if not px:
+        return raw, meta
+    pmap = {b[0]: b for b in px}
+    try:
+        y1 = fetch(ysym, "1m", "1d")
+        yt = y1.get("timestamp") or []
+        yc = y1["indicators"]["quote"][0]["close"]
+        diffs = sorted(yc[i] - pmap[t][C] for i, t in enumerate(yt[-20:], max(0, len(yt) - 20)) if yc[i] is not None and t in pmap)
+        if not diffs:
+            return raw, meta
+        off = diffs[len(diffs) // 2]
+    except Exception:  # noqa: BLE001
+        return raw, meta
+    ylast = (ymt // 60) * 60  # ultimo minuto che Yahoo conosce
+    fresh = [(t, o - off, h - off, l - off, c - off) for (t, o, h, l, c) in px if t > ylast and t + 60 <= now_ts]
+    sec = _ISEC.get(interval, 0)
+    out = list(raw)
+    if sec and fresh:
+        by = {}
+        for b in fresh:
+            by.setdefault(b[0] // sec * sec, []).append(b)
+        for k in sorted(by):
+            g = by[k]
+            hi, lo = max(x[H] for x in g), min(x[L] for x in g)
+            if out and out[-1][0] == k:
+                p = out[-1]
+                out[-1] = (k, p[O], max(p[H], hi), min(p[L], lo), g[-1][C])
+            elif not out or k > out[-1][0]:
+                out.append((k, g[0][O], hi, lo, g[-1][C]))
+    m2 = dict(meta)
+    m2["regularMarketPrice"] = px[-1][C] - off
+    m2["regularMarketTime"] = px[-1][0] + 60
+    m2["live_src"] = "paxg"
+    m2["yahoo_age"] = int(now_ts - ymt)
+    return out, m2
+
+
 def get_bars(ysym, tf, now_ts):
     """Barre chiuse [(ts, o, h, l, c)]. Per 1d e 1w l'ultima può essere in corso."""
     interval, rng, sec = TF[tf]
@@ -153,6 +226,12 @@ def get_bars(ysym, tf, now_ts):
         o, h, l, c = q["open"][i], q["high"][i], q["low"][i], q["close"][i]
         if None not in (o, h, l, c):
             raw.append((t, o, h, l, c))
+    meta = res["meta"]
+    if interval in _ISEC:
+        raw, meta = live_extend(ysym, raw, meta, interval, now_ts)
+    elif is_gold(ysym):
+        _, meta = live_extend(ysym, raw, meta, "", now_ts)
+    res = {"meta": meta}
     if tf == "4h":
         blocks = {}
         for b in raw:
@@ -734,7 +813,8 @@ def price_info(ysym, now_ts, spot=None):
             "rsi_d": rsi14(closes[-150:]), "atr_d": a[-1], "sma20_d": sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None,
             "hi20_d": max(b[H] for b in d1[-20:]), "lo20_d": min(b[L] for b in d1[-20:]),
             "prev_hi": d1[-2][H] if len(d1) >= 2 else None, "prev_lo": d1[-2][L] if len(d1) >= 2 else None,
-            "last_bar_ts": b5[-1][0] + 300 if b5 else None, "offset": 0.0, "spot": None, "gap_warning": False}
+            "last_bar_ts": b5[-1][0] + 300 if b5 else None, "offset": 0.0, "spot": None, "gap_warning": False,
+            "price_ts": meta5.get("regularMarketTime"), "live": meta5.get("live_src") or "yahoo"}
     if spot:
         info["spot"] = spot
         info["offset"] = spot - live

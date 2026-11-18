@@ -150,7 +150,8 @@ function render() {
   $("#hPrice").textContent = fmt(P(ov.info.last));
   const ch = ov.info.change_pct, c = $("#hChange");
   c.textContent = (ch >= 0 ? "▲ " : "▼ ") + Math.abs(ch).toFixed(2).replace(".", ",") + "% oggi"; c.className = "delta " + (ch >= 0 ? "up" : "down");
-  $("#hUpd").textContent = "ultima barra " + (ov.info.last_bar_ts ? tIT(ov.info.last_bar_ts) : "–") + " (ora italiana)";
+  const pAge = ov.info.price_ts ? Math.max(0, Math.round(Date.now() / 1000 - ov.info.price_ts)) : null;
+  $("#hUpd").textContent = (pAge != null ? "prezzo di " + (pAge < 90 ? pAge + " secondi" : Math.round(pAge / 60) + " minuti") + " fa" + (ov.info.live === "yahoo" && ov.gold ? " (feed ritardato)" : "") + " · " : "") + "ultima barra " + (ov.info.last_bar_ts ? tIT(ov.info.last_bar_ts) : "–") + " (ora italiana)";
   $("#hRead").textContent = ov.reading || "";
   if (ov.info.gap_warning) showMsg("Scarto insolito tra il prezzo che hai scritto e i dati di Yahoo: i livelli spostati sul tuo grafico potrebbero non essere affidabili. Controlla prezzo e simbolo.");
   renderDirCards(); renderExplain(); renderMtf(); renderChart(); renderTm();
@@ -550,7 +551,7 @@ async function initClaude() {
 /* ---------- avvio ---------- */
 initZoom(); buildTf(); buildRr(); buildDirSegs(); buildAxisSegs(); buildAlertUi(); initClaude();
 load().then(() => { buildAlertUi(); schedulePoll(false); });
-setInterval(() => { if (!document.hidden) load(true, true); }, 90000);
+setInterval(() => { if (!document.hidden) load(true, true); }, 30000);
 
 /* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
 const OPP_TFS = ["5m", "15m", "30m", "1h", "4h", "1d", "1w"];

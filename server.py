@@ -180,7 +180,7 @@ def api_setup(q):
     now_ts = E.epoch(now_u)
     ck = (ys, tf, setup, tuple(rrs_from(q)), tuple(sorted((k, v[0]) for k, v in q.items() if k in ("N", "am", "hold", "or", "replays", "seed"))))
     hit = SETUP_CACHE.get(ck)
-    if hit and time.time() - hit[0] < 30 and all("%g" % rr in next(iter(hit[2]["dirs"].values()))["blocks"] for rr in rrs if "dirs" in hit[2]):
+    if hit and time.time() - hit[0] < (12 if ys == "GC=F" else 30) and all("%g" % rr in next(iter(hit[2]["dirs"].values()))["blocks"] for rr in rrs if "dirs" in hit[2]):
         bars, st = hit[1], hit[2]
     else:
         bars, st = build_setup(ys, now_u, tf, setup, rrs, q, True, bounded(q, "replays", 10000, 1000, 20000, int))
