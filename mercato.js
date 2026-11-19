@@ -92,10 +92,28 @@
   }
   async function loadFed() { try { FED = await get("/api/fomc"); } catch (e) { const el = $("#fedBody"); if (el && !FED) el.innerHTML = `<p class="muted">Non riesco a leggere i dati adesso (${esc(e.message)}).</p>`; return; } fedCard(); }
 
-  const onTab = () => { const t = document.body.dataset.tab; if (t === "avvisi") { loadCtx(); loadSes(); loadFed(); } };
+  /* stato delle notifiche sul telefono: collegate? ultimi invii dal server + notifica di prova */
+  let NT = null, ntMsg = "";
+  const hm = (ts) => new Date(ts * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+  function ntfyBox() {
+    const el = $("#ntfyBox"); if (!el) return;
+    if (!NT) { el.innerHTML = ntMsg ? `<p class="muted small">${esc(ntMsg)}</p>` : ""; return; }
+    const ev = NT.events.map((e) => `<div class="sigrow"><div class="sr1"><b>${esc(e.title)}</b><span class="when">${hm(e.t)}</span><span class="pill ${e.ok ? "green" : "red"}">${e.ok ? "inviata" : "non inviata"}</span></div>${e.ok ? "" : `<div class="sr2"><span>${esc(e.err)}</span></div>`}</div>`).join("");
+    el.innerHTML = `<div class="ctl-label" style="margin-top:10px">Notifiche sul telefono</div>
+      <p class="small">${NT.ntfy ? "Collegate sul server." : "<b class=\"r\">Non collegate sul server</b> (manca il canale): non partirà nessuna notifica."} Server avviato il ${hm(NT.started)}${NT.tick_age != null ? ", ultimo controllo " + Math.round(NT.tick_age / 60) + " min fa" : ""}.</p>
+      ${ev || '<p class="muted small">Da quando il server è partito non è stata inviata nessuna notifica.</p>'}
+      <div class="row gap" style="margin-top:8px"><button class="btn" id="ntfyTest">Manda una notifica di prova</button></div><p class="small" id="ntfyMsg">${esc(ntMsg)}</p>
+      <p class="muted small">"Inviata" vuol dire che il servizio l'ha accettata: se sul telefono non compare, controlla nell'app ntfy che sia iscritto allo stesso canale e che le notifiche e il risparmio batteria non la blocchino. L'elenco si azzera a ogni riavvio del server.</p>`;
+    const b = $("#ntfyTest"); if (b) b.onclick = async () => { b.disabled = true; try { await post("/api/notiftest", {}); ntMsg = "Prova inviata alle " + hm(Date.now() / 1000) + ": controlla il telefono."; } catch (e) { ntMsg = e.message; } await loadNtfy(); };
+  }
+  const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }), j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error || "errore"); return j; };
+  async function loadNtfy() { try { NT = await get("/api/notifstatus"); } catch (e) { NT = null; ntMsg = "Non riesco a leggere lo stato delle notifiche adesso (" + e.message + ")."; } ntfyBox(); }
+
+  const onTab = () => { const t = document.body.dataset.tab; if (t === "avvisi") { loadCtx(); loadSes(); loadFed(); loadNtfy(); } };
   new MutationObserver(onTab).observe(document.body, { attributes: true, attributeFilter: ["data-tab"] });
   window.addEventListener("resize", () => { sesCard(); });
   loadCtx(); setInterval(() => { if (!document.hidden) loadCtx(); }, 180000);
   brief(); setInterval(brief, 60000);
-  setTimeout(() => { loadSes(); loadFed(); }, 1500);
+  setTimeout(() => { loadSes(); loadFed(); loadNtfy(); }, 1500);
+  setInterval(() => { if (!document.hidden && document.body.dataset.tab === "avvisi") loadNtfy(); }, 60000);
 })();

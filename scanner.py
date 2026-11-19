@@ -63,7 +63,7 @@ def _save():
     try:
         with open(OUT, "w", encoding="utf-8") as fh:
             json.dump({"runs": STATE["runs"], "signals": STATE["signals"], "seen": STATE["seen"][-800:]}, fh, ensure_ascii=False, separators=(",", ":"))
-        PS.push(OUT, "scan.json")
+        PS.push(OUT, "scan.json", min_gap=300)
     except OSError:
         pass
     _save_hist()
@@ -76,7 +76,7 @@ def _save_hist():
     try:
         with open(HIST_FILE, "w", encoding="utf-8") as fh:
             json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
-        PS.push(HIST_FILE, "scan_hist.json")
+        PS.push(HIST_FILE, "scan_hist.json", min_gap=300)
     except OSError:
         pass
 
@@ -181,10 +181,17 @@ def scan_symbol(sym, tf, now_ts):
 
 
 def _send(title, body, tags):
+    import notify as N
+    t = title.encode("ascii", "ignore").decode("ascii")
     req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST",
-                                 headers={"Title": title.encode("ascii", "ignore").decode("ascii"), "Priority": "high", "Tags": tags})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return r.status
+                                 headers={"Title": t, "Priority": "high", "Tags": tags})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            N.record(t, True)
+            return r.status
+    except Exception as exc:  # noqa: BLE001
+        N.record(t, False, exc.__class__.__name__ + ": " + str(exc))
+        raise
 
 
 def _fmt(x):

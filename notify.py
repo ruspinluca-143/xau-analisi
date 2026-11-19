@@ -51,7 +51,7 @@ def load_log():
         return []
 
 
-def save_log(items):
+def save_log(items, urgent=False):
     cut = time.time() - KEEP_DAYS * 86400
     items = [x for x in items if x["entry_ts"] > cut][-1500:]
     d = os.path.dirname(LOG_FILE)
@@ -59,7 +59,7 @@ def save_log(items):
         os.makedirs(d, exist_ok=True)
     with open(LOG_FILE, "w", encoding="utf-8") as fh:
         json.dump(items, fh, ensure_ascii=False, separators=(",", ":"))
-    PS.push(LOG_FILE, "log.json")
+    PS.push(LOG_FILE, "log.json", min_gap=0 if urgent else 600)  # senza fretta una copia ogni 10 minuti al massimo (non un salvataggio a ogni controllo)
 
 
 def closed_bars(ys, tf, now_ts):
@@ -154,11 +154,25 @@ def outcome_message(c):
     return title.encode("ascii", "ignore").decode("ascii"), body, tag
 
 
+EVENTS = []      # ultime notifiche tentate: {"t", "title", "ok", "err"}; si azzera a ogni riavvio del server
+STARTED = time.time()
+
+
+def record(title, ok, err=""):
+    EVENTS.append({"t": int(time.time()), "title": str(title)[:90], "ok": bool(ok), "err": str(err)[:120]})
+    del EVENTS[:-40]
+
+
 def send(title, body, tags):
     req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST",
                                  headers={"Title": title, "Priority": "high", "Tags": tags})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return r.status
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            record(title, True)
+            return r.status
+    except Exception as exc:  # noqa: BLE001
+        record(title, False, exc.__class__.__name__ + ": " + str(exc))  # l'errore non contiene il nome del canale
+        raise
 
 
 def resolve(items, ys, now_ts):
@@ -212,7 +226,7 @@ def _save_rem(d):
     try:
         with open(REM_FILE, "w", encoding="utf-8") as fh:
             json.dump(d, fh)
-        PS.push(REM_FILE, "reminders.json")
+        PS.push(REM_FILE, "reminders.json", min_gap=0)
     except OSError:
         pass
 
@@ -322,7 +336,7 @@ def run(topic=None, calendar=None):
             except Exception as exc:  # noqa: BLE001
                 print("  invio dell'esito non riuscito: %s" % exc)
     if not DRY and (new or closed):
-        save_log(items)
+        save_log(items, urgent=bool(sent))
     print("Registrati: %d nuovi, esiti chiusi: %d, notifiche inviate: %d" % (len(new), len(closed), sent))
     return 0
 

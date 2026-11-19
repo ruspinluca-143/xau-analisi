@@ -571,11 +571,36 @@ def api_claude(body):
         return {"error": "Chiamata a Claude non riuscita: %s" % exc}
 
 
+NOTIF_TEST = {"t": 0.0}
+
+
+def api_notifstatus(q):
+    """Stato delle notifiche sul telefono: collegate o no e ultimi invii (senza testo dei messaggi né nome del canale)."""
+    import notify as N
+    return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.EVENTS[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
+            "last_tick": TICK["result"], "tick_age": int(time.time() - TICK["last"]) if TICK["last"] else None}
+
+
+def api_notiftest(body):
+    """Notifica di prova (al massimo una ogni 5 minuti per tutti): serve a vedere subito se il telefono la riceve."""
+    import notify as N
+    topic = os.environ.get("NTFY_TOPIC", "").strip()
+    if not topic:
+        raise ValueError("Le notifiche non sono collegate sul server (manca NTFY_TOPIC).")
+    now = time.time()
+    if now - NOTIF_TEST["t"] < 300:
+        raise ValueError("Prova già inviata da poco: aspetta qualche minuto.")
+    NOTIF_TEST["t"] = now
+    N.TOPIC = topic
+    N.send("Prova avvisi XAU", "Se leggi questo messaggio le notifiche funzionano. Solo analisi, nessun ordine.", "bell")
+    return {"ok": True}
+
+
 import market as MK  # noqa: E402  (quadro di mercato, sessioni, reazione alla Fed, confronto con la regola, livelli personali)
 
 ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket,
-          "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark}
-POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal}
+          "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark, "/api/notifstatus": api_notifstatus}
+POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal, "/api/notiftest": api_notiftest}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
 HITS = {}  # indirizzo -> orari delle ultime richieste
@@ -691,8 +716,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("richiesta troppo grande")
             body = json.loads(self.rfile.read(n) or b"{}")
             self._json(200, fn(body))
+        except ValueError as exc:  # richiesta non valida (anche JSON malformato): il messaggio è scritto da noi
+            self._json(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001
-            self._json(500, {"error": str(exc)})
+            print("errore POST %s: %s" % (self.path, exc))  # il dettaglio resta nei log del server
+            self._json(500, {"error": "Errore temporaneo del server: riprova tra poco."})
 
 
 def main():
