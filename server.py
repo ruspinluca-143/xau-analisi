@@ -577,7 +577,8 @@ NOTIF_TEST = {"t": 0.0}
 def api_notifstatus(q):
     """Stato delle notifiche sul telefono: collegate o no e ultimi invii (senza testo dei messaggi né nome del canale)."""
     import notify as N
-    return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.EVENTS[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
+    return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.events()[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
+            "reminders": N.reminder_state(),
             "last_tick": TICK["result"], "tick_age": int(time.time() - TICK["last"]) if TICK["last"] else None}
 
 

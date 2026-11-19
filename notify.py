@@ -154,13 +154,36 @@ def outcome_message(c):
     return title.encode("ascii", "ignore").decode("ascii"), body, tag
 
 
-EVENTS = []      # ultime notifiche tentate: {"t", "title", "ok", "err"}; si azzera a ogni riavvio del server
+EVENTS = []      # ultime notifiche tentate: {"t", "title", "ok", "err"}; si salvano su file e (con GITHUB_TOKEN) sul ramo dati: non si perdono a ogni riavvio
 STARTED = time.time()
+EVENTS_FILE = os.path.join(os.path.dirname(LOG_FILE) or ".", "events.json")
+_ev_loaded = False
+
+
+def events():
+    """Elenco degli ultimi invii; la prima volta recupera quelli salvati prima dell'ultimo riavvio."""
+    global _ev_loaded
+    if not _ev_loaded:
+        _ev_loaded = True
+        PS.restore(EVENTS_FILE, "events.json")
+        try:
+            with open(EVENTS_FILE, encoding="utf-8") as fh:
+                EVENTS[:0] = [x for x in json.load(fh) if isinstance(x, dict) and "t" in x and "title" in x][-40:]
+        except (OSError, ValueError):
+            pass
+    return EVENTS
 
 
 def record(title, ok, err=""):
+    events()
     EVENTS.append({"t": int(time.time()), "title": str(title)[:90], "ok": bool(ok), "err": str(err)[:120]})
     del EVENTS[:-40]
+    try:
+        with open(EVENTS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(EVENTS, fh, ensure_ascii=False, separators=(",", ":"))
+        PS.push(EVENTS_FILE, "events.json", min_gap=120)
+    except OSError:
+        pass
 
 
 def send(title, body, tags):
@@ -229,6 +252,12 @@ def _save_rem(d):
         PS.push(REM_FILE, "reminders.json", min_gap=0)
     except OSError:
         pass
+
+
+def reminder_state():
+    """Promemoria già inviati (chiave -> istante): serve a vedere nell'app se quello delle 7:00 è partito."""
+    d = _load_rem()
+    return dict(sorted(((k, v) for k, v in d.items() if k.startswith("mattina|")), key=lambda kv: kv[1])[-4:])
 
 
 def reminders(events, now_u, now_ts, can_send):
