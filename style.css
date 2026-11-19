@@ -269,3 +269,9 @@ canvas.cv{cursor:pointer}
 .search:focus-within,.spot:focus-within{box-shadow:0 0 0 2px #b3a8ff}
 .chk{min-height:32px}
 .chk input{width:20px;height:20px}
+
+/* filtri dei segnali automatici */
+.autofilter{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:6px 0 10px;align-items:end}
+.autofilter label{display:flex;flex-direction:column;gap:4px;color:var(--muted)}
+.autofilter select{width:100%}
+.card[hidden]{display:none!important}

@@ -31,7 +31,7 @@
     const el = $("#daybrief"); if (!el) return;
     const now = Date.now() / 1000; let ar = {};
     try { ar = JSON.parse(localStorage.getItem("xau_archive_v1") || "{}"); } catch (e) { ar = {}; }
-    const fav = Object.values(ar).filter((x) => x.stance === "favorevole" && x.entry_ts > now - 86400 && (typeof afterReset !== "function" || afterReset(x)));
+    const fav = Object.values(ar).filter((x) => x.stance === "favorevole" && [2, 3, 4].includes(Number(x.rr)) && x.entry_ts > now - 86400 && (typeof afterReset !== "function" || afterReset(x)));
     const open = fav.filter((x) => x.status === "open"), parts = [];
     if (fav.length) parts.push(`segnali favorevoli nelle ultime 24 ore: <b>${fav.length}</b>${open.length ? " (" + open.length + " ancora aperti)" : ""}: ` + fav.slice(0, 4).map((x) => esc((x.symbol && x.symbol !== "XAUUSD" ? x.symbol : "Oro") + " " + (x.dir === "buy" ? "BUY" : "SHORT") + " " + x.tf)).join(", ") + (fav.length > 4 ? "…" : ""));
     else parts.push("nessun segnale favorevole nelle ultime 24 ore");

@@ -133,7 +133,7 @@
       <div id="pmList"></div>
       <p class="muted small" id="pmUpd"></p>
     </div>
-    <div class="card" id="scanCard">
+    <div class="card" id="scanCard" hidden>
       <h3>Scanner titoli e cripto</h3>
       <p class="muted small">Ogni ora controllo circa 100 grandi titoli USA (Nvidia, Tesla, Apple, Microsoft...) e le cripto principali (Bitcoin, Ethereum...) sul giornaliero e sull'ora, buy e short. Compaiono solo quelli con vantaggio: "netto" (criterio più severo, ti avviso anche sul telefono) o "possibile" (il criterio che usiamo per l'oro). Dati gratuiti, con possibile ritardo. Solo analisi: nessun ordine.</p>
       <div id="scanList"></div>
@@ -142,8 +142,9 @@
     <div class="card" id="autoCard">
       <h3>Segnali automatici (anche con l'app chiusa)</h3>
       <p class="muted small"><b>Tutti</b> i segnali favorevoli che il server ha trovato da solo, ogni minuto, anche con l'app chiusa e anche quelli che non hai visto: è l'elenco completo e uguale per tutti i tuoi dispositivi. Per ognuno vedi com'è andata (target, stop o ancora aperto).</p>
-      <div class="seg small" id="autoFilter" style="margin:4px 0 8px"></div>
+      <div class="autofilter" id="autoFilter"></div>
       <div id="autoStats" class="statrow"></div>
+      <div id="autoWhere"></div>
       <canvas id="cvAuto" class="cv short"></canvas>
       <div id="autoStance" class="statrow"></div>
       <div id="autoTable" class="tablewrap"></div>
@@ -243,7 +244,7 @@
 <script src="collapse.js"></script>
 <script src="info.js"></script>
 <script src="calendar.js"></script>
-<script src="scan.js"></script>
+<script src="segnali.js"></script>
 <script src="suggest.js"></script>
 <script src="analisi.js"></script>
 <script src="mercato.js"></script>

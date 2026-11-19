@@ -81,7 +81,7 @@
     el.innerHTML = `<p class="muted small">Cosa avrebbe fatto la regola base dell'app (breakout di 20 barre, stop = 1 ATR) sull'oro nello stesso periodo in cui hai operato tu. Non solo i segnali "netti": <b>tutti</b> i breakout, senza scegliere.</p>
       <div class="row gap"><div class="seg small" id="bnTf"></div><div class="seg small" id="bnRr"></div></div><div id="bnOut" style="margin-top:10px"></div>`;
     const mk = (id, items, key) => seg($(id), items, BS[key], (v) => { BS[key] = v; benchBuild2(); benchLoad(); });
-    window.__bnMk = () => { mk("#bnTf", [{ label: "15m", value: "15m" }, { label: "30m", value: "30m" }, { label: "1h", value: "1h" }, { label: "4h", value: "4h" }], "tf"); mk("#bnRr", [{ label: "1R", value: "1" }, { label: "2R", value: "2" }, { label: "3R", value: "3" }], "rr"); };
+    window.__bnMk = () => { mk("#bnTf", [{ label: "15m", value: "15m" }, { label: "30m", value: "30m" }, { label: "1h", value: "1h" }, { label: "4h", value: "4h" }], "tf"); mk("#bnRr", [{ label: "2R", value: "2" }, { label: "3R", value: "3" }, { label: "4R", value: "4" }], "rr"); };
     window.__bnMk();
   }
   const benchBuild2 = () => window.__bnMk && window.__bnMk();

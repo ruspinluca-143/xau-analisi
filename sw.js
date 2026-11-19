@@ -1,7 +1,7 @@
 /* Service worker: tiene in memoria solo l'involucro dell'app (pagina, stile, icone).
    I dati (/api/...) vanno SEMPRE in rete: mai prezzi vecchi spacciati per nuovi. */
 const CACHE = "xau-shell-v8";
-const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/trades.js", "/collapse.js", "/info.js", "/calendar.js", "/scan.js", "/suggest.js", "/analisi.js", "/mercato.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/trades.js", "/collapse.js", "/info.js", "/calendar.js", "/segnali.js", "/suggest.js", "/analisi.js", "/mercato.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

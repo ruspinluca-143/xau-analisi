@@ -1,7 +1,7 @@
 """Scanner di titoli e cripto: cerca i segnali di breakout con vantaggio dimostrato (solo analisi, nessun ordine).
 
 Controlla una lista di circa 100 simboli (grandi titoli USA e cripto principali) sul giornaliero e sull'ora, buy e short, con tutti i target
-da 1R a 5R. Un segnale entra nell'elenco solo se simulazione e storico concordano (come per l'oro). Due livelli: "netto" = almeno 20 casi storici e R medio
+2R, 3R e 4R. Un segnale entra nell'elenco solo se simulazione e storico concordano (come per l'oro). Due livelli: "netto" = almeno 20 casi storici e R medio
 sopra 2 volte l'errore statistico (più severo, perché guardando tanti simboli qualche falso segnale capita per caso); "possibile" = il criterio normale
 dell'oro (almeno 10 casi, R medio sopra l'errore statistico). Gli avvisi sul telefono partono per entrambi i livelli (il titolo dice "possibile" per il meno severo).
 

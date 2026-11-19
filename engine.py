@@ -23,7 +23,7 @@ import urllib.request
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 BASES = ["https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com"]
 ALIASES = {"XAUUSD": "GC=F", "XAU": "GC=F", "ORO": "GC=F", "GOLD": "GC=F", "GC=F": "GC=F"}
-DEFAULT_RRS = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0]
+DEFAULT_RRS = [2.0, 3.0, 4.0]  # solo target 2R, 3R e 4R (scelta di Luca, 19/11/2026)
 
 # tf -> (interval Yahoo, range Yahoo, secondi per barra)
 TF = {

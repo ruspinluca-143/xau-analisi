@@ -2,7 +2,7 @@
 
 Pensato per girare da solo ogni 5 minuti su GitHub Actions (vedi .github/workflows/avvisi.yml):
   1. cerca i segnali appena scattati su tutti i time frame utili (breakout 5m 15m 1h 4h 1d 1w + aperture Londra e
-     New York a 5m e 15m), buy e short, con tutti i target da 1R a 5R;
+     New York a 5m e 15m), buy e short, con i target 2R, 3R e 4R;
   2. li REGISTRA tutti in log.json (anche quelli non favorevoli, col loro giudizio) per poterli confrontare;
   3. avvisa sul telefono SOLO quelli favorevoli (simulazione e storico concordano, almeno 10 casi);
   4. segue ogni segnale fino all'esito (target, stop o chiuso) e, per quelli avvisati, manda una seconda

@@ -2,7 +2,8 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const TFS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"];
-const RRS = [1, 1.5, 2, 3, 4, 5];
+const RRS = [2, 3, 4]; // solo target 2R, 3R e 4R
+const RR_OK = (x) => [2, 3, 4].includes(Number(x.rr)); // i segnali già registrati con altri target non si mostrano né si contano
 const S = { symbol: "XAUUSD", spot: "", tf: "1h", setup: "breakout", rr: 2, dir: "buy", ov: null, data: null, gold: true, seq: 0, selCase: null, tab: "oggi" };
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
@@ -554,7 +555,7 @@ async function loadJournal() {
     JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: loadLocalJournal() }) });
     saveLocalJournal(JD.items); // il diario locale tiene tutto (anche i non favorevoli) per aggiornarne gli esiti
     // ma il report mostra e conta solo i segnali favorevoli
-    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole" && afterReset(x)) }) });
+    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole" && RR_OK(x) && afterReset(x)) }) });
   } catch (e) { return; }
   const s = JD.stats || { n: 0 };
   $("#jStats").innerHTML = s.n ? `<div class="stat"><span>Segnali chiusi</span><b>${s.n}</b></div><div class="stat"><span>Target</span><b class="g">${s.target}</b></div><div class="stat"><span>Stop</span><b class="r">${s.stop}</b></div><div class="stat"><span>Win rate</span><b>${pct(s.win_rate)}</b></div><div class="stat"><span>R totale</span><b class="${s.total_r >= 0 ? "g" : "r"}">${sgn(s.total_r)}</b></div><div class="stat"><span>Ancora aperti</span><b>${JD.open}</b></div>` : `<p class="muted">Ancora nessun segnale chiuso. Attiva gli avvisi: ogni segnale che l'app vede viene salvato qui e seguito fino all'esito.</p>`;
@@ -736,7 +737,9 @@ function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
   const isGold = (x) => !x.symbol || x.symbol === "XAUUSD";
-  const all = AUTO.filter((x) => x.stance === "favorevole" && afterReset(x) && (AF === "all" || (AF === "gold" ? isGold(x) : !isGold(x)))); // gli altri non si mostrano né si contano
+  const base = AUTO.filter((x) => x.stance === "favorevole" && RR_OK(x) && afterReset(x)); // oro, titoli e cripto nello stesso elenco; i filtri separano gli strumenti
+  if (window.autoBreakdown) window.autoBreakdown(base); // tabella "Dove sbagli"
+  const all = base.filter(window.autoPass || (() => true)); // filtri scelti dall'utente
   if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
   const fav = all.filter((x) => ["target", "stop", "none"].includes(x.status)), open = all.filter((x) => x.status === "open").length;
   const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
@@ -778,8 +781,4 @@ loadAuto();
   show();
 })();
 
-(function () {
-  const el = document.getElementById("autoFilter"); if (!el) return;
-  const build = () => seg(el, [{ label: "Tutti", value: "all" }, { label: "Oro", value: "gold" }, { label: "Titoli e cripto", value: "scan" }], AF, (v) => { AF = v; build(); renderAuto(); });
-  build();
-})();
+

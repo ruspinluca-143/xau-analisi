@@ -365,7 +365,9 @@ def api_scan(q):
 
 def api_tick(q):
     """Controllo dei segnali + avvisi ntfy. Lo chiama un servizio esterno ogni minuto (sveglia anche il server)."""
-    try:  # scanner di titoli e cripto: parte da solo quando è ora (vedi scanner.due)
+    try:  # scanner di titoli e cripto: acceso (i suoi segnali stanno nello stesso elenco dell'oro); si spegne con la variabile d'ambiente SCANNER=0
+        if os.environ.get("SCANNER", "1") == "0":
+            raise RuntimeError("scanner spento")
         import scanner as SC
         SC.maybe_start()
     except Exception:  # noqa: BLE001  (se non parte, i segnali sull'oro vanno avanti lo stesso)
@@ -507,11 +509,12 @@ def api_log(q):
         items = N.load_log()
     except Exception:  # noqa: BLE001
         items = []
-    try:
-        import scanner as SC
-        items = list(items) + SC.history()
-    except Exception:  # noqa: BLE001
-        pass
+    if os.environ.get("SCANNER", "1") != "0":
+        try:
+            import scanner as SC
+            items = list(items) + SC.history()
+        except Exception:  # noqa: BLE001
+            pass
     return sorted(items, key=lambda x: x.get("entry_ts", 0))
 
 
