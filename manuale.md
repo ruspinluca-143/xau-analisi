@@ -4,6 +4,7 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **20/11/2026** — Corretto: dalle 16:46 il server non riusciva a raggiungere il servizio delle notifiche ("rete non raggiungibile") e nessun avviso arrivava. Ora, in quel caso, riprova con una connessione IPv4 e aspetta qualche minuto fra un tentativo e l'altro invece di insistere ogni minuto.
 - **20/11/2026** — Nuovo: **copia di sicurezza** dei tuoi dati (Operazioni, in fondo) con salvataggio e ripristino; **scelta dei time frame** per cui ricevere la notifica e **riepilogo serale** in un solo messaggio (Avvisi, "Notifiche sul telefono"); **Scarica segnali (CSV)** nei Segnali automatici.
 - **20/11/2026** — Nuovo: questo **manuale d'uso** dentro l'app (pulsante **?** in alto). Corretto: in Avvisi, nei Segnali automatici, i pulsanti delle categorie di "Dove sbagli" andavano fuori dal riquadro: ora vanno a capo.
 - **20/11/2026** — Tolti i time frame **1 minuto** e **15 minuti**: restano 5m, 30m, 1h, 4h, 1d, 1w. L'apertura di Londra e di New York c'è solo a 5 minuti. I vecchi segnali su 1m e 15m non si vedono né si contano più.

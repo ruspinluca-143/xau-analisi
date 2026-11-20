@@ -12,8 +12,11 @@ Pensato per girare da solo ogni 5 minuti su GitHub Actions (vedi .github/workflo
     python notify.py            lavora davvero (serve NTFY_TOPIC per le notifiche)
     python notify.py --test     manda anche un messaggio di prova
 """
+import errno
+import http.client
 import json
 import os
+import socket
 import sys
 import time
 import urllib.error
@@ -193,6 +196,32 @@ def record(title, ok, err=""):
 
 
 NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "").strip()  # facoltativo: con un account ntfy i limiti sono i tuoi e non quelli dell'indirizzo condiviso del server
+class _V4Conn(http.client.HTTPSConnection):
+    """Connessione solo IPv4: serve quando il server non ha una rotta IPv6 e il nome del servizio risponde (anche) con indirizzi IPv6."""
+
+    def connect(self):
+        last = None
+        for _fam, _typ, _pro, _cn, sa in socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM):
+            try:
+                sock = socket.create_connection(sa[:2], self.timeout)
+                break
+            except OSError as exc:
+                last = exc
+        else:
+            raise last or OSError("nessun indirizzo IPv4 per %s" % self.host)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _V4Handler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_V4Conn, req)
+
+
+def _unreachable(exc):
+    r = getattr(exc, "reason", exc)
+    return isinstance(r, OSError) and getattr(r, "errno", None) in (errno.ENETUNREACH, errno.EHOSTUNREACH, 101, 113, 10051, 10065)
+
+
 COOL = {"until": 0.0, "n": 0}  # pausa dopo un errore 429 (troppe richieste): niente tentativi a raffica che peggiorano il blocco
 
 
@@ -219,7 +248,13 @@ def send(title, body, tags, essential=False):
         headers["Authorization"] = "Bearer " + NTFY_TOKEN
     req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST", headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        try:
+            r = urllib.request.urlopen(req, timeout=20)
+        except urllib.error.URLError as exc:
+            if isinstance(exc, urllib.error.HTTPError) or not _unreachable(exc):
+                raise
+            r = urllib.request.build_opener(_V4Handler).open(req, timeout=20)  # "rete non raggiungibile": riprovo solo con IPv4
+        with r:
             COOL["n"] = 0
             BUDGET["n"] += 1
             record(title, True)
@@ -242,7 +277,9 @@ def send(title, body, tags, essential=False):
             record(title, False, "HTTP %s %s" % (exc.code, detail))
         raise
     except Exception as exc:  # noqa: BLE001
-        record(title, False, exc.__class__.__name__ + ": " + str(exc))  # l'errore non contiene il nome del canale
+        pause = min(300, 60 * (COOL["n"] + 1))  # errore di rete: pausa breve e crescente (1, 2, 3... fino a 5 minuti), non un tentativo al minuto
+        COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
+        record(title, False, exc.__class__.__name__ + ": " + str(exc) + " (riprovo tra %d min)" % (pause // 60))  # l'errore non contiene il nome del canale
         raise
 
 
