@@ -581,7 +581,7 @@ def api_notifstatus(q):
     """Stato delle notifiche sul telefono: collegate o no e ultimi invii (senza testo dei messaggi né nome del canale)."""
     import notify as N
     return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.events()[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
-            "reminders": N.reminder_state(), "token": bool(N.NTFY_TOKEN), "prefs": N.prefs(), "pin_required": bool(os.environ.get("PREFS_PIN", "").strip()), "pause": N.cooling(), "budget": [N.BUDGET["n"], N.DAILY_MAX],
+            "reminders": N.reminder_state(), "token": bool(N.NTFY_TOKEN), "telegram": N.telegram_on(), "prefs": N.prefs(), "pin_required": bool(os.environ.get("PREFS_PIN", "").strip()), "pause": N.cooling(), "budget": [N.BUDGET["n"], N.DAILY_MAX],
             "last_tick": TICK["result"], "tick_age": int(time.time() - TICK["last"]) if TICK["last"] else None}
 
 
@@ -601,8 +601,8 @@ def api_notiftest(body):
     """Notifica di prova (al massimo una ogni 5 minuti per tutti): serve a vedere subito se il telefono la riceve."""
     import notify as N
     topic = os.environ.get("NTFY_TOPIC", "").strip()
-    if not topic:
-        raise ValueError("Le notifiche non sono collegate sul server (manca NTFY_TOPIC).")
+    if not topic and not N.telegram_on():
+        raise ValueError("Le notifiche non sono collegate sul server (manca NTFY_TOPIC, oppure TELEGRAM_TOKEN e TELEGRAM_CHAT_ID).")
     now = time.time()
     if now - NOTIF_TEST["t"] < 300:
         raise ValueError("Prova già inviata da poco: aspetta qualche minuto.")

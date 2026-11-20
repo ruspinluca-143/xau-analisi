@@ -4,6 +4,7 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **20/11/2026** — Nuovo: **Telegram come secondo canale** per le notifiche (facoltativo). Se ntfy non è raggiungibile dal server, gli avvisi arrivano su Telegram. In Avvisi, "Notifiche sul telefono" dice se Telegram è attivo.
 - **20/11/2026** — Corretto: dalle 16:46 il server non riusciva a raggiungere il servizio delle notifiche ("rete non raggiungibile") e nessun avviso arrivava. Ora, in quel caso, riprova con una connessione IPv4 e aspetta qualche minuto fra un tentativo e l'altro invece di insistere ogni minuto.
 - **20/11/2026** — Nuovo: **copia di sicurezza** dei tuoi dati (Operazioni, in fondo) con salvataggio e ripristino; **scelta dei time frame** per cui ricevere la notifica e **riepilogo serale** in un solo messaggio (Avvisi, "Notifiche sul telefono"); **Scarica segnali (CSV)** nei Segnali automatici.
 - **20/11/2026** — Nuovo: questo **manuale d'uso** dentro l'app (pulsante **?** in alto). Corretto: in Avvisi, nei Segnali automatici, i pulsanti delle categorie di "Dove sbagli" andavano fuori dal riquadro: ora vanno a capo.
@@ -209,6 +210,9 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 1. In Avvisi apri "Notifiche sul telefono": se un invio risulta **inviato**, il problema è sul telefono (canale giusto? notifiche e batteria dell'app ntfy).
 2. Se risulta **non inviato**, leggi il motivo. Con "429 troppe richieste" il servizio gratuito ha esaurito la quota: serve il token ntfy (vedi la guida di gestione).
 3. Premi **Manda una notifica di prova**.
+
+### Telegram (secondo canale, facoltativo)
+- Se il servizio ntfy non risponde (succede: a volte il server non lo raggiunge), gli avvisi possono arrivare su **Telegram**: un bot privato ti scrive gli stessi messaggi. Si attiva con due variabili sul server (vedi la guida di gestione). In Avvisi, "Notifiche sul telefono" mostra "Telegram: attivo" e i messaggi inviati così hanno "(via Telegram)" nel titolo.
 
 ### Limiti
 - Il servizio gratuito ferma a 250 messaggi al giorno per indirizzo; l'app ne manda al massimo 150 al giorno (i promemoria passano sempre).

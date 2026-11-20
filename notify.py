@@ -225,38 +225,42 @@ def _unreachable(exc):
 COOL = {"until": 0.0, "n": 0}  # pausa dopo un errore 429 (troppe richieste): niente tentativi a raffica che peggiorano il blocco
 
 
-def cooling():
-    """Secondi di pausa rimasti dopo un errore 429 (0 = si può inviare)."""
+TG_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()    # secondo canale (facoltativo): bot Telegram, indipendente da ntfy
+TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
+
+def telegram_on():
+    return bool(TG_TOKEN and TG_CHAT)
+
+
+def enabled():
+    """True se c'è almeno un canale per le notifiche (ntfy o Telegram)."""
+    return bool(TOPIC) or telegram_on()
+
+
+def _ntfy_wait():
     return max(0, int(COOL["until"] - time.time()))
 
 
-BUDGET = {"day": "", "n": 0}
-DAILY_MAX = int(os.environ.get("NTFY_DAILY_MAX", "150"))  # il servizio gratuito ferma a 250 messaggi al giorno: teniamo un margine, e i promemoria passano sempre
+def cooling():
+    """Secondi di pausa rimasti prima di poter inviare: con Telegram collegato non si aspetta mai (l'altro canale è libero)."""
+    return 0 if telegram_on() else _ntfy_wait()
 
 
-def send(title, body, tags, essential=False):
-    day = time.strftime("%Y-%m-%d", time.gmtime())
-    if BUDGET["day"] != day:
-        BUDGET["day"], BUDGET["n"] = day, 0
-    if not essential and BUDGET["n"] >= DAILY_MAX:
-        raise RuntimeError("limite giornaliero di %d messaggi raggiunto: gli altri avvisi restano nell'elenco dell'app" % DAILY_MAX)
-    wait = cooling()
-    if wait:
-        raise RuntimeError("invio in pausa per altri %d minuti dopo l'errore 429 del servizio" % (wait // 60 + 1))  # non si registra: non è un nuovo tentativo
+def _send_ntfy(title, body, tags):
     headers = {"Title": title, "Priority": "high", "Tags": tags}
     if NTFY_TOKEN:
         headers["Authorization"] = "Bearer " + NTFY_TOKEN
     req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST", headers=headers)
     try:
         try:
-            r = urllib.request.urlopen(req, timeout=20)
+            r = urllib.request.urlopen(req, timeout=12)
         except urllib.error.URLError as exc:
             if isinstance(exc, urllib.error.HTTPError) or not _unreachable(exc):
                 raise
-            r = urllib.request.build_opener(_V4Handler).open(req, timeout=20)  # "rete non raggiungibile": riprovo solo con IPv4
+            r = urllib.request.build_opener(_V4Handler).open(req, timeout=12)  # "rete non raggiungibile": riprovo solo con IPv4
         with r:
             COOL["n"] = 0
-            BUDGET["n"] += 1
             record(title, True)
             return r.status
     except urllib.error.HTTPError as exc:
@@ -272,15 +276,70 @@ def send(title, body, tags, essential=False):
                 ra = 0
             pause = min(1800, max(ra, 120 * (2 ** min(COOL["n"], 4))))
             COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
-            record(title, False, "429 troppe richieste: riprovo tra %d minuti. %s" % (pause // 60, detail))
+            record(title, False, "ntfy 429 troppe richieste: riprovo tra %d minuti. %s" % (pause // 60, detail))
         else:
-            record(title, False, "HTTP %s %s" % (exc.code, detail))
+            record(title, False, "ntfy HTTP %s %s" % (exc.code, detail))
         raise
     except Exception as exc:  # noqa: BLE001
         pause = min(300, 60 * (COOL["n"] + 1))  # errore di rete: pausa breve e crescente (1, 2, 3... fino a 5 minuti), non un tentativo al minuto
         COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
-        record(title, False, exc.__class__.__name__ + ": " + str(exc) + " (riprovo tra %d min)" % (pause // 60))  # l'errore non contiene il nome del canale
+        record(title, False, "ntfy " + exc.__class__.__name__ + ": " + str(exc) + " (riprovo tra %d min)" % (pause // 60))  # l'errore non contiene il nome del canale
         raise
+
+
+def _send_telegram(title, body):
+    data = json.dumps({"chat_id": TG_CHAT, "text": ("%s\n%s" % (title, body))[:3900], "disable_web_page_preview": True}).encode("utf-8")
+    req = urllib.request.Request("https://api.telegram.org/bot%s/sendMessage" % TG_TOKEN, data=data, method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            record(title + " (via Telegram)", True)
+            return r.status
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = json.loads(exc.read().decode("utf-8", "ignore")).get("description", "")[:120]
+        except Exception:  # noqa: BLE001
+            pass
+        record(title, False, "Telegram HTTP %s %s" % (exc.code, detail))  # mai il token nei messaggi
+        raise
+    except Exception as exc:  # noqa: BLE001
+        record(title, False, "Telegram " + exc.__class__.__name__)
+        raise
+
+
+BUDGET = {"day": "", "n": 0}
+DAILY_MAX = int(os.environ.get("NTFY_DAILY_MAX", "150"))  # il servizio gratuito ferma a 250 messaggi al giorno: teniamo un margine, e i promemoria passano sempre
+
+
+def send(title, body, tags, essential=False):
+    """Invia su ntfy e, se non riesce (o in più, se è l'unico collegato), su Telegram. Riesce se almeno un canale accetta il messaggio."""
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    if BUDGET["day"] != day:
+        BUDGET["day"], BUDGET["n"] = day, 0
+    if not essential and BUDGET["n"] >= DAILY_MAX:
+        raise RuntimeError("limite giornaliero di %d messaggi raggiunto: gli altri avvisi restano nell'elenco dell'app" % DAILY_MAX)
+    err = None
+    ok = False
+    if TOPIC:
+        wait = _ntfy_wait()
+        if wait:
+            err = RuntimeError("ntfy in pausa per altri %d minuti dopo un errore del servizio" % (wait // 60 + 1))  # non si registra: non è un nuovo tentativo
+        else:
+            try:
+                _send_ntfy(title, body, tags)
+                ok = True
+            except Exception as exc:  # noqa: BLE001
+                err = exc
+    if not ok and telegram_on():
+        try:
+            _send_telegram(title, body)
+            ok = True
+        except Exception as exc:  # noqa: BLE001
+            err = exc
+    if ok:
+        BUDGET["n"] += 1
+        return 200
+    raise err or RuntimeError("nessun canale di notifica collegato")
 
 
 def resolve(items, ys, now_ts):
@@ -513,9 +572,9 @@ def run(topic=None, calendar=None):
     now_ts = E.epoch(now_u)
     ys = E.yahoo_symbol(SYMBOL)
     print("Controllo %s alle %s UTC%s" % (SYMBOL, now_u.strftime("%d/%m %H:%M"), " (prova, non scrivo né invio)" if DRY else ""))
-    can_send = bool(TOPIC) and not DRY
-    if not DRY and not TOPIC:
-        print("NTFY_TOPIC non impostato: registro i segnali ma non posso inviare notifiche. Vedi AVVISI.md.")
+    can_send = enabled() and not DRY
+    if not DRY and not enabled():
+        print("Nessun canale di notifica (NTFY_TOPIC o TELEGRAM_TOKEN e TELEGRAM_CHAT_ID): registro i segnali ma non posso inviare notifiche. Vedi GUIDA-GESTIONE.md.")
     if TEST and can_send:
         try:
             send("Prova avvisi XAU", "Tutto collegato: se leggi questo messaggio, le notifiche funzionano. Solo analisi, nessun ordine.", "bell")

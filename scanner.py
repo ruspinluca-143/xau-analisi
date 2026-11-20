@@ -102,9 +102,9 @@ def history():
 def flush():
     """Invia in UN SOLO messaggio i segnali favorevoli non ancora notificati (anche quelli rimasti indietro per un errore 429) e, in un altro, gli esiti nuovi."""
     _load()
-    if not TOPIC:
-        return 0
     import notify as N
+    if not (N.enabled() or TOPIC):
+        return 0
     if N.cooling():
         return 0
     now = time.time()
@@ -153,7 +153,7 @@ def resolve_open(force=False):
             import notify as N
             closed = N.resolve(items, None, int(now))
             done = len(closed)
-            outs = [it for it in STATE["hist"].values() if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and TOPIC and not N.cooling()]
+            outs = [it for it in STATE["hist"].values() if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and (N.enabled() or TOPIC) and not N.cooling()]
             if outs:
                 try:
                     W = {"target": "TARGET preso", "stop": "STOP preso", "none": "finestra finita"}
