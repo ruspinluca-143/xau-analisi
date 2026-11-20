@@ -280,7 +280,7 @@ def api_signals(q):
     found, errors = [], []
     for setup in setups:
         for tf in tfs:
-            if setup != "breakout" and tf not in ("5m", "15m"):
+            if setup != "breakout" and tf not in ("5m",):
                 continue
             try:
                 bars, st = build_setup(ys, now_u, tf, setup, [rr], q, True, bounded(q, "replays", 3000, 1000, 10000, int))

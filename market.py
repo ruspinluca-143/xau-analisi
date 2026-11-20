@@ -209,7 +209,7 @@ def api_benchmark(q):
             return float(d)
     t0, t1 = int(f("t0", 0)), int(f("t1", time.time()))
     tf = (q.get("tf", ["1h"])[0] or "1h")
-    if tf not in ("15m", "30m", "1h", "4h"):
+    if tf not in ("30m", "1h", "4h"):
         tf = "1h"
     rr = max(1.0, min(5.0, f("rr", 2)))
     key = ("bench", t0 // 3600, t1 // 3600, tf, rr)
@@ -218,7 +218,7 @@ def api_benchmark(q):
         now_ts = E.epoch(E.now_utc())
         bars, _ = E.get_bars("GC=F", tf, now_ts)
         atr = E.atr_list(bars)
-        hold = {"15m": 24, "30m": 24, "1h": 24, "4h": 18}[tf]
+        hold = {"30m": 24, "1h": 24, "4h": 18}[tf]
         cases = []
         for d in ("buy", "sell"):
             for c in E.breakout_history(bars, atr, 20, 1.0, hold, d, [rr]):

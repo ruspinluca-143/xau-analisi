@@ -36,8 +36,8 @@ TF = {
     "1d": ("1d", "2y", 86400),
     "1w": ("1wk", "5y", 604800),
 }
-TF_ORDER = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
-SHORT_TF = ("1m", "5m", "15m", "30m", "1h")
+TF_ORDER = ["5m", "30m", "1h", "4h", "1d", "1w"]  # niente 1 minuto e 15 minuti (scelta di Luca, 20/11/2026)
+SHORT_TF = ("5m", "30m", "1h")
 LONG_TF = ("4h", "1d", "1w")
 O, H, L, C = 1, 2, 3, 4  # indici nelle barre (ts, o, h, l, c)
 

@@ -29,8 +29,8 @@ LOG_FILE = os.environ.get("LOG_FILE", "log.json")
 DRY = "--dry" in sys.argv
 TEST = "--test" in sys.argv
 HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
-BREAKOUT_TFS = ("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w")
-SESSION_TFS = ("1m", "5m", "15m")
+BREAKOUT_TFS = ("5m", "30m", "1h", "4h", "1d", "1w")  # niente 1 minuto e 15 minuti
+SESSION_TFS = ("5m",)
 REPLAYS = 3000
 KEEP_DAYS = 90
 

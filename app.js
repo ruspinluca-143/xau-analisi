@@ -1,7 +1,8 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const TFS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"];
+const TFS = ["5m", "30m", "1h", "4h", "1d", "1w"]; // niente 1 minuto e 15 minuti
+const TF_OK = (x) => !["1m", "15m"].includes(x.tf); // i segnali già registrati su questi time frame non si mostrano né si contano
 const RRS = [2, 3, 4]; // solo target 2R, 3R e 4R
 const RR_OK = (x) => [2, 3, 4].includes(Number(x.rr)); // i segnali già registrati con altri target non si mostrano né si contano
 const S = { symbol: "XAUUSD", spot: "", tf: "1h", setup: "breakout", rr: 2, dir: "buy", ov: null, data: null, gold: true, seq: 0, selCase: null, tab: "oggi" };
@@ -87,12 +88,12 @@ function seg(el, items, current, onPick) {
     el.appendChild(b);
   });
 }
-function buildTf() { seg($("#tfSeg"), TFS.map((t) => ({ label: t, value: t })), S.tf, (v) => { S.tf = v; if (S.setup !== "breakout" && !["5m", "15m"].includes(v)) S.setup = "breakout"; buildTf(); buildSetupSeg(); load(); }); }
+function buildTf() { seg($("#tfSeg"), TFS.map((t) => ({ label: t, value: t })), S.tf, (v) => { S.tf = v; if (S.setup !== "breakout" && !["5m"].includes(v)) S.setup = "breakout"; buildTf(); buildSetupSeg(); load(); }); }
 function buildSetupSeg() {
   const items = [{ label: "Breakout", value: "breakout" }];
   const ses = (S.ov && S.ov.sessions) || { london: "Londra", ny: "New York" };
   Object.entries(ses).forEach(([k, l]) => items.push({ label: l.replace(" (Borsa)", ""), value: k }));
-  seg($("#setupSeg"), items, S.setup, (v) => { S.setup = v; if (v !== "breakout" && !["5m", "15m"].includes(S.tf)) { S.tf = "5m"; buildTf(); } buildSetupSeg(); load(); });
+  seg($("#setupSeg"), items, S.setup, (v) => { S.setup = v; if (v !== "breakout" && !["5m"].includes(S.tf)) { S.tf = "5m"; buildTf(); } buildSetupSeg(); load(); });
 }
 function buildRr() { seg($("#rrSeg"), RRS.map((r) => ({ label: r + "R", value: r })), S.rr, (v) => { S.rr = v; buildRr(); load(true); }); }
 function buildAxisSegs() {
@@ -492,13 +493,13 @@ function renderTm() {
 }
 
 /* ---------- avvisi ---------- */
-const AL = Object.assign({ on: false, tfs: ["5m", "15m", "1h"], setups: ["breakout"], stance: "fav" }, JSON.parse(localStorage.getItem("xau_alerts") || "{}"));
+const AL = Object.assign({ on: false, tfs: ["5m", "1h"], setups: ["breakout"], stance: "fav" }, JSON.parse(localStorage.getItem("xau_alerts") || "{}"));
 const seen = new Set(JSON.parse(localStorage.getItem("xau_seen") || "[]"));
 let alTimer = null, audioCtx = null;
 function saveAl() { localStorage.setItem("xau_alerts", JSON.stringify(AL)); localStorage.setItem("xau_seen", JSON.stringify([...seen].slice(-300))); }
 function buildAlertUi() {
   const mk = (id, vals, sel, cb) => { $(id).innerHTML = vals.map(([v, l]) => `<label class="chip"><input type="checkbox" value="${v}" ${sel.includes(v) ? "checked" : ""}><span>${l}</span></label>`).join(""); $$(id + " input").forEach((i) => (i.onchange = () => { cb($$(id + " input:checked").map((x) => x.value)); saveAl(); })); };
-  mk("#alTf", [["1m", "1 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 ora"], ["4h", "4 ore"]], AL.tfs, (v) => (AL.tfs = v));
+  mk("#alTf", [["5m", "5 min"], ["30m", "30 min"], ["1h", "1 ora"], ["4h", "4 ore"]], AL.tfs, (v) => (AL.tfs = v));
   const ses = (S.ov && S.ov.sessions) || { london: "Londra", ny: "New York" };
   mk("#alSetup", [["breakout", "Breakout"], ...Object.entries(ses).map(([k, l]) => [k, "Apertura " + l.replace(" (Borsa)", "")])], AL.setups, (v) => (AL.setups = v));
   $$("input[name=alStance]").forEach((i) => { i.checked = i.value === AL.stance; i.onchange = () => { AL.stance = i.value; saveAl(); }; });
@@ -555,7 +556,7 @@ async function loadJournal() {
     JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: loadLocalJournal() }) });
     saveLocalJournal(JD.items); // il diario locale tiene tutto (anche i non favorevoli) per aggiornarne gli esiti
     // ma il report mostra e conta solo i segnali favorevoli
-    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole" && RR_OK(x) && afterReset(x)) }) });
+    JD = await api("/api/journal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: JD.items.filter((x) => x.stance === "favorevole" && RR_OK(x) && TF_OK(x) && afterReset(x)) }) });
   } catch (e) { return; }
   const s = JD.stats || { n: 0 };
   $("#jStats").innerHTML = s.n ? `<div class="stat"><span>Segnali chiusi</span><b>${s.n}</b></div><div class="stat"><span>Target</span><b class="g">${s.target}</b></div><div class="stat"><span>Stop</span><b class="r">${s.stop}</b></div><div class="stat"><span>Win rate</span><b>${pct(s.win_rate)}</b></div><div class="stat"><span>R totale</span><b class="${s.total_r >= 0 ? "g" : "r"}">${sgn(s.total_r)}</b></div><div class="stat"><span>Ancora aperti</span><b>${JD.open}</b></div>` : `<p class="muted">Ancora nessun segnale chiuso. Attiva gli avvisi: ogni segnale che l'app vede viene salvato qui e seguito fino all'esito.</p>`;
@@ -594,7 +595,7 @@ load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 30000);
 
 /* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
-const OPP_TFS = ["5m", "15m", "30m", "1h", "4h", "1d", "1w"];
+const OPP_TFS = ["5m", "30m", "1h", "4h", "1d", "1w"];
 let oppRunning = false;
 function closeOpp() { $("#oppSheet").hidden = true; document.body.style.overflow = ""; }
 function applyOpp(c) {
@@ -667,7 +668,7 @@ async function openOpp() {
   oppRunning = true;
   const sess = Object.keys((S.ov && S.ov.sessions) || { london: 1, ny: 1 }), combos = [];
   OPP_TFS.forEach((tf) => combos.push({ setup: "breakout", tf }));
-  sess.forEach((k) => ["5m", "15m"].forEach((tf) => combos.push({ setup: k, tf })));
+  sess.forEach((k) => ["5m"].forEach((tf) => combos.push({ setup: k, tf })));
   $("#oppBody").innerHTML = ""; $("#oppProg").style.width = "3%"; $("#oppSub").textContent = "Analizzo tutti i time frame, i setup e i target… 3%";
   const results = []; let done = 0, next = 0;
   const worker = async () => {
@@ -737,7 +738,7 @@ function renderAuto() {
   const st = $("#autoStats"), tb = $("#autoTable");
   if (AUTO === null) { st.innerHTML = '<p class="muted">Non riesco a leggere il registro dei segnali adesso.</p>'; tb.innerHTML = ""; return; }
   const isGold = (x) => !x.symbol || x.symbol === "XAUUSD";
-  const base = AUTO.filter((x) => x.stance === "favorevole" && RR_OK(x) && afterReset(x)); // oro, titoli e cripto nello stesso elenco; i filtri separano gli strumenti
+  const base = AUTO.filter((x) => x.stance === "favorevole" && RR_OK(x) && TF_OK(x) && afterReset(x)); // oro, titoli e cripto nello stesso elenco; i filtri separano gli strumenti
   if (window.autoBreakdown) window.autoBreakdown(base); // tabella "Dove sbagli"
   const all = base.filter(window.autoPass || (() => true)); // filtri scelti dall'utente
   if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
