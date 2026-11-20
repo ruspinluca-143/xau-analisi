@@ -196,7 +196,16 @@ def cooling():
     return max(0, int(COOL["until"] - time.time()))
 
 
-def send(title, body, tags):
+BUDGET = {"day": "", "n": 0}
+DAILY_MAX = int(os.environ.get("NTFY_DAILY_MAX", "150"))  # il servizio gratuito ferma a 250 messaggi al giorno: teniamo un margine, e i promemoria passano sempre
+
+
+def send(title, body, tags, essential=False):
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    if BUDGET["day"] != day:
+        BUDGET["day"], BUDGET["n"] = day, 0
+    if not essential and BUDGET["n"] >= DAILY_MAX:
+        raise RuntimeError("limite giornaliero di %d messaggi raggiunto: gli altri avvisi restano nell'elenco dell'app" % DAILY_MAX)
     wait = cooling()
     if wait:
         raise RuntimeError("invio in pausa per altri %d minuti dopo l'errore 429 del servizio" % (wait // 60 + 1))  # non si registra: non è un nuovo tentativo
@@ -207,6 +216,7 @@ def send(title, body, tags):
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             COOL["n"] = 0
+            BUDGET["n"] += 1
             record(title, True)
             return r.status
     except urllib.error.HTTPError as exc:
@@ -351,7 +361,7 @@ def reminders(events, now_u, now_ts, can_send):
         print("Promemoria delle 7: carica l'email di Vantage")
         if can_send:
             try:
-                send("Buongiorno - carica l'email di Vantage", "Apri l'email giornaliera di Vantage, copia il testo e incollalo nell'app: Operazioni, Incolla testo, Importa. Così le operazioni di ieri sono registrate e le statistiche tornano esatte.", "memo")
+                send("Buongiorno - carica l'email di Vantage", "Apri l'email giornaliera di Vantage, copia il testo e incollalo nell'app: Operazioni, Incolla testo, Importa. Così le operazioni di ieri sono registrate e le statistiche tornano esatte.", "memo", essential=True)
                 done[k] = now_ts; changed = True; sent += 1
             except Exception as exc:  # noqa: BLE001
                 print("  promemoria non inviato: %s" % exc)
@@ -375,7 +385,7 @@ def reminders(events, now_u, now_ts, can_send):
         print("Promemoria notizia: %s | %s" % (title, "; ".join(lines)))
         if can_send:
             try:
-                send(title.encode("ascii", "ignore").decode("ascii"), body, "rotating_light")
+                send(title.encode("ascii", "ignore").decode("ascii"), body, "rotating_light", essential=True)
                 done[k] = now_ts; changed = True; sent += 1
             except Exception as exc:  # noqa: BLE001
                 print("  promemoria non inviato: %s" % exc)

@@ -581,7 +581,7 @@ def api_notifstatus(q):
     """Stato delle notifiche sul telefono: collegate o no e ultimi invii (senza testo dei messaggi né nome del canale)."""
     import notify as N
     return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.events()[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
-            "reminders": N.reminder_state(),
+            "reminders": N.reminder_state(), "token": bool(N.NTFY_TOKEN), "pause": N.cooling(), "budget": [N.BUDGET["n"], N.DAILY_MAX],
             "last_tick": TICK["result"], "tick_age": int(time.time() - TICK["last"]) if TICK["last"] else None}
 
 
@@ -596,7 +596,13 @@ def api_notiftest(body):
         raise ValueError("Prova già inviata da poco: aspetta qualche minuto.")
     NOTIF_TEST["t"] = now
     N.TOPIC = topic
-    N.send("Prova avvisi XAU", "Se leggi questo messaggio le notifiche funzionano. Solo analisi, nessun ordine.", "bell")
+    try:
+        N.send("Prova avvisi XAU", "Se leggi questo messaggio le notifiche funzionano. Solo analisi, nessun ordine.", "bell", essential=True)
+    except RuntimeError as exc:  # pausa o limite: il messaggio è scritto da noi
+        raise ValueError(str(exc))
+    except Exception:  # noqa: BLE001
+        e = N.events()[-1] if N.events() else {}
+        raise ValueError("Il servizio ha rifiutato l'invio: " + str(e.get("err", "errore sconosciuto")))
     return {"ok": True}
 
 
