@@ -94,6 +94,44 @@ def history():
     return list(STATE["hist"].values())
 
 
+def flush():
+    """Invia in UN SOLO messaggio i segnali favorevoli non ancora notificati (anche quelli rimasti indietro per un errore 429) e, in un altro, gli esiti nuovi."""
+    _load()
+    if not TOPIC:
+        return 0
+    import notify as N
+    if N.cooling():
+        return 0
+    now = time.time()
+    sent = 0
+    with LOCK:
+        pend = sorted((x for x in STATE["hist"].values() if x.get("status") == "open" and not x.get("notified") and now - x.get("entry_ts", 0) < 6 * 3600 and x.get("rr") in E.DEFAULT_RRS),
+                      key=lambda x: (x.get("tier") != "netto", -x.get("entry_ts", 0)))
+    if pend:
+        def one(x):
+            return "%s %s %s - target %gR%s: ingresso %s, stop %s, target %s (simulazione %.0f%%, storico %d casi, R %+.2f)" % (
+                x["symbol"], "BUY" if x["dir"] == "buy" else "SHORT", x["tf"], x["rr"], "" if x.get("tier") == "netto" else " (possibile)", _fmt(x["entry"]), _fmt(x["stop"]),
+                _fmt(x["target"]), x["sim_target"] * 100, x["hist_n"], x["hist_r"])
+        try:
+            if len(pend) == 1:
+                x = pend[0]
+                _send("TITOLO %s - %s %s - target %gR%s" % (x["symbol"], "BUY" if x["dir"] == "buy" else "SHORT", x["tf"], x["rr"], "" if x.get("tier") == "netto" else " (possibile)"),
+                      "Segnale favorevole su %s (%s), livello %s.\n%s\nPrezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (
+                          x["symbol"], x["tf"], "netto" if x.get("tier") == "netto" else "possibile", one(x)), "chart_with_upwards_trend" if x["dir"] == "buy" else "chart_with_downwards_trend")
+            else:
+                shown = pend[:10]
+                _send("%d segnali favorevoli su titoli e cripto" % len(pend), "\n".join(one(x) for x in shown) + ("\n...e altri %d nell'app (Avvisi, Segnali automatici)." % (len(pend) - len(shown)) if len(pend) > len(shown) else "")
+                      + "\nPrezzi dei dati (possono avere ritardo). Solo analisi, decidi tu.", "chart_with_upwards_trend")
+            with LOCK:
+                for x in pend:
+                    x["notified"] = True
+                _save_hist()
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            print("  invio non riuscito (si riprova): %s" % exc)
+    return sent
+
+
 def resolve_open(force=False):
     """Segue i segnali dello scanner fino a target, stop o fine finestra (al massimo ogni 5 minuti) e avvisa dell'esito."""
     _load()
@@ -105,20 +143,23 @@ def resolve_open(force=False):
         items = [x for x in STATE["hist"].values() if x.get("status") == "open"]
     done = 0
     try:
+        flush()  # riprova gli avvisi rimasti indietro per un errore 429
         if items:
             import notify as N
             closed = N.resolve(items, None, int(now))
-            for it in closed:
-                done += 1
-                if TOPIC and it.get("notified") and not it.get("out_sent"):
-                    try:
-                        w = {"target": "TARGET preso", "stop": "STOP preso", "none": "finestra finita"}.get(it["status"], it["status"])
-                        _send("ESITO TITOLO %s - %s" % (it["symbol"], w), "%s %s %s: %s, %+.2f R. Solo analisi." % (it["symbol"], "BUY" if it["dir"] == "buy" else "SHORT", it["tf"], w, it["r"] or 0.0),
-                              "white_check_mark" if it["status"] == "target" else "x" if it["status"] == "stop" else "hourglass")
+            done = len(closed)
+            outs = [it for it in STATE["hist"].values() if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and TOPIC and not N.cooling()]
+            if outs:
+                try:
+                    W = {"target": "TARGET preso", "stop": "STOP preso", "none": "finestra finita"}
+                    lines = ["%s %s %s: %s (%+.2f R)" % (it["symbol"], "BUY" if it["dir"] == "buy" else "SHORT", it["tf"], W.get(it["status"], it["status"]), it["r"] or 0.0) for it in outs]
+                    _send(("ESITO TITOLO %s - %s" % (outs[0]["symbol"], W.get(outs[0]["status"], ""))) if len(outs) == 1 else "%d esiti su titoli e cripto" % len(outs), "\n".join(lines) + "\nSolo analisi.",
+                          "white_check_mark" if len(outs) == 1 and outs[0]["status"] == "target" else "bell")
+                    for it in outs:
                         it["out_sent"] = True
-                    except Exception as exc:  # noqa: BLE001
-                        print("  esito non inviato: %s" % exc)
-            if closed:
+                except Exception as exc:  # noqa: BLE001
+                    print("  esiti non inviati (si riprova): %s" % exc)
+            if closed or outs:
                 with LOCK:
                     _save_hist()
     finally:
@@ -181,17 +222,10 @@ def scan_symbol(sym, tf, now_ts):
 
 
 def _send(title, body, tags):
+    """Un solo canale di invio per tutta l'app (notify.send): pausa dopo un 429, token facoltativo, registro degli invii."""
     import notify as N
-    t = title.encode("ascii", "ignore").decode("ascii")
-    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST",
-                                 headers={"Title": t, "Priority": "high", "Tags": tags})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            N.record(t, True)
-            return r.status
-    except Exception as exc:  # noqa: BLE001
-        N.record(t, False, exc.__class__.__name__ + ": " + str(exc))
-        raise
+    N.TOPIC = N.TOPIC or TOPIC
+    return N.send(title.encode("ascii", "ignore").decode("ascii"), body, tags)
 
 
 def _fmt(x):
@@ -232,30 +266,10 @@ def scan(tfs, limit=None, dry=False):
                     STATE["hist"][s["id"]] = _as_log_item(s)
         print("%s: %d simboli controllati, %d errori, %d segnali (%d nuovi) in %ds" % (tf, len(syms) - len(errors), len(errors), len(found), len(fresh), time.time() - t0))
     if not dry:
-        sent = 0
-        if TOPIC and new:
-            for s in new[:6]:
-                dn = "BUY" if s["dir"] == "buy" else "SHORT"
-                title = "TITOLO %s - %s %s - target %gR%s" % (s["sym"], dn, s["tf"], s["rr"], "" if s["tier"] == "netto" else " (possibile)")
-                body = ("Segnale favorevole su %s (%s), livello %s.\nIngresso %s - Stop %s - Target %s\nSimulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %+.2f.\n"
-                        "Prezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (s["sym"], s["tf"], "netto" if s["tier"] == "netto" else "possibile", _fmt(s["entry"]), _fmt(s["stop"]), _fmt(s["target"]),
-                                                                                      s["sim_target"] * 100, s["sim_stop"] * 100, s["hist_n"], s["hist_r"]))
-                try:
-                    _send(title, body, "chart_with_upwards_trend" if s["dir"] == "buy" else "chart_with_downwards_trend")
-                    sent += 1
-                except Exception as exc:  # noqa: BLE001
-                    print("  invio non riuscito: %s" % exc)
-            if len(new) > 6:
-                try:
-                    _send("TITOLI - altri %d segnali" % (len(new) - 6), "Altri segnali con vantaggio: " + ", ".join("%s %s" % (s["sym"], s["tf"]) for s in new[6:20]) + ". Aprili nell'app: Avvisi, Scanner.", "bell")
-                except Exception as exc:  # noqa: BLE001
-                    print("  invio riepilogo non riuscito: %s" % exc)
         with LOCK:
             STATE["seen"] += [s["id"] for s in new]
-            for s in new:
-                if s["id"] in STATE["hist"] and TOPIC:
-                    STATE["hist"][s["id"]]["notified"] = True
             _save()
+        sent = flush()
         print("Notifiche inviate: %d" % sent)
     return new
 

@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -186,13 +187,45 @@ def record(title, ok, err=""):
         pass
 
 
+NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "").strip()  # facoltativo: con un account ntfy i limiti sono i tuoi e non quelli dell'indirizzo condiviso del server
+COOL = {"until": 0.0, "n": 0}  # pausa dopo un errore 429 (troppe richieste): niente tentativi a raffica che peggiorano il blocco
+
+
+def cooling():
+    """Secondi di pausa rimasti dopo un errore 429 (0 = si può inviare)."""
+    return max(0, int(COOL["until"] - time.time()))
+
+
 def send(title, body, tags):
-    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST",
-                                 headers={"Title": title, "Priority": "high", "Tags": tags})
+    wait = cooling()
+    if wait:
+        raise RuntimeError("invio in pausa per altri %d minuti dopo l'errore 429 del servizio" % (wait // 60 + 1))  # non si registra: non è un nuovo tentativo
+    headers = {"Title": title, "Priority": "high", "Tags": tags}
+    if NTFY_TOKEN:
+        headers["Authorization"] = "Bearer " + NTFY_TOKEN
+    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
+            COOL["n"] = 0
             record(title, True)
             return r.status
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", "ignore")[:160].replace("\n", " ")
+        except Exception:  # noqa: BLE001
+            pass
+        if exc.code == 429:  # troppe richieste: pausa crescente (2, 4, 8... fino a 30 minuti), o quella indicata dal servizio
+            try:
+                ra = int(exc.headers.get("Retry-After", "0") or 0)
+            except ValueError:
+                ra = 0
+            pause = min(1800, max(ra, 120 * (2 ** min(COOL["n"], 4))))
+            COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
+            record(title, False, "429 troppe richieste: riprovo tra %d minuti. %s" % (pause // 60, detail))
+        else:
+            record(title, False, "HTTP %s %s" % (exc.code, detail))
+        raise
     except Exception as exc:  # noqa: BLE001
         record(title, False, exc.__class__.__name__ + ": " + str(exc))  # l'errore non contiene il nome del canale
         raise
@@ -252,6 +285,54 @@ def _save_rem(d):
         PS.push(REM_FILE, "reminders.json", min_gap=0)
     except OSError:
         pass
+
+
+def flush(items, now_ts, can_send):
+    """Invia in UN SOLO messaggio i segnali favorevoli non ancora notificati (anche quelli rimasti indietro per un errore 429) e, in un altro,
+    gli esiti nuovi: meno messaggi, e se il servizio rifiuta si riprova al giro dopo. Restituisce (messaggi inviati, qualcosa è cambiato)."""
+    sent, changed = 0, False
+    if not can_send or cooling():
+        return sent, changed
+    pend = [it for it in items if it.get("stance") == "favorevole" and not it.get("notified") and not it.get("symbol") and it.get("status") == "open"
+            and it.get("rr") in E.DEFAULT_RRS and now_ts - it["entry_ts"] < 6 * 3600]
+    if pend:
+        try:
+            for c in pend:
+                c["age_min"] = max(0, int((now_ts - (c["entry_ts"] + E.TF[c["tf"]][2])) / 60))
+            if len(pend) == 1:
+                c = pend[0]
+                title, body = message(c)
+                send(title, body, "chart_with_upwards_trend" if c["dir"] == "buy" else "chart_with_downwards_trend")
+            else:
+                title = ("%d segnali favorevoli sull'oro" % len(pend))
+                lines = []
+                for c in pend:
+                    lines.append("%s - ingresso %s, stop %s, target %s (scattato alle %s ora italiana; simulazione %.0f%%, storico R %s)" % (
+                        title_of(c), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]), E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), c["sim_target"] * 100, sgn(c["hist_r"])))
+                send(title, "\n".join(lines) + "\nI prezzi sono quelli dei dati: confrontali col tuo grafico. Solo analisi, decidi tu.", "chart_with_upwards_trend")
+            for c in pend:
+                c["notified"] = True
+            sent, changed = sent + 1, True
+        except Exception as exc:  # noqa: BLE001
+            print("  invio non riuscito (si riprova): %s" % exc)
+    outs = [it for it in items if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and not it.get("symbol")]
+    if outs and not cooling():
+        try:
+            if len(outs) == 1:
+                title, body, tag = outcome_message(outs[0])
+                send(title, body, tag)
+            else:
+                lines = []
+                for it in outs:
+                    word = {"target": "TARGET", "stop": "STOP", "none": "senza esito netto"}[it["status"]]
+                    lines.append("%s: %s (%s R)" % (title_of(it), word, "%+.1f" % it["r"]))
+                send("%d esiti dei segnali" % len(outs), "\n".join(lines) + "\nSolo analisi.", "bell")
+            for it in outs:
+                it["out_sent"] = True
+            sent, changed = sent + 1, True
+        except Exception as exc:  # noqa: BLE001
+            print("  invio degli esiti non riuscito (si riprova): %s" % exc)
+    return sent, changed
 
 
 def reminder_state():
@@ -337,34 +418,19 @@ def run(topic=None, calendar=None):
     found = candidates(ys, now_u)
     new = [c for c in found if c["id"] not in known]
     print("Segnali freschi: %d (nuovi: %d, di cui favorevoli: %d)" % (len(found), len(new), sum(1 for c in new if c["stance"] == "favorevole")))
-    sent = 0
     for c in new:
         c.update({"status": "open", "r": None, "notified": False, "out_sent": False})
         if c["stance"] == "favorevole":
             title, body = message(c)
             print("  FAVOREVOLE: %s\n    %s" % (title, body.replace("\n", "\n    ")))
-            if can_send:
-                try:
-                    send(title, body, "chart_with_upwards_trend" if c["dir"] == "buy" else "chart_with_downwards_trend")
-                    c["notified"] = True
-                    sent += 1
-                except Exception as exc:  # noqa: BLE001
-                    print("  invio non riuscito: %s" % exc)
         else:
             print("  registrato (non favorevole, %s): %s" % (c["stance"], title_of(c)))
         items.append(c)
     closed = resolve(items, ys, now_ts)
     for it in closed:
         print("  ESITO %s: %s %s R" % (it["id"], it["status"], it["r"]))
-        if it["notified"] and not it["out_sent"] and can_send:
-            title, body, tag = outcome_message(it)
-            try:
-                send(title, body, tag)
-                it["out_sent"] = True
-                sent += 1
-            except Exception as exc:  # noqa: BLE001
-                print("  invio dell'esito non riuscito: %s" % exc)
-    if not DRY and (new or closed):
+    sent, changed = flush(items, now_ts, can_send)
+    if not DRY and (new or closed or changed):
         save_log(items, urgent=bool(sent))
     print("Registrati: %d nuovi, esiti chiusi: %d, notifiche inviate: %d" % (len(new), len(closed), sent))
     return 0
