@@ -581,8 +581,20 @@ def api_notifstatus(q):
     """Stato delle notifiche sul telefono: collegate o no e ultimi invii (senza testo dei messaggi né nome del canale)."""
     import notify as N
     return {"ntfy": bool(os.environ.get("NTFY_TOPIC", "").strip()), "events": N.events()[-15:][::-1], "started": int(N.STARTED), "now": int(time.time()),
-            "reminders": N.reminder_state(), "token": bool(N.NTFY_TOKEN), "pause": N.cooling(), "budget": [N.BUDGET["n"], N.DAILY_MAX],
+            "reminders": N.reminder_state(), "token": bool(N.NTFY_TOKEN), "prefs": N.prefs(), "pin_required": bool(os.environ.get("PREFS_PIN", "").strip()), "pause": N.cooling(), "budget": [N.BUDGET["n"], N.DAILY_MAX],
             "last_tick": TICK["result"], "tick_age": int(time.time() - TICK["last"]) if TICK["last"] else None}
+
+
+def api_prefs(body):
+    """Scelte per le notifiche (time frame su cui avvisare, riepilogo serale). Con la variabile PREFS_PIN impostata serve il PIN."""
+    import notify as N
+    pin = os.environ.get("PREFS_PIN", "").strip()
+    if pin and not hmac.compare_digest(str(body.get("pin", "")).encode("utf-8"), pin.encode("utf-8")):
+        raise ValueError("PIN non valido.")
+    tfs = body.get("tfs")
+    if not isinstance(tfs, list) or any(t not in E.TF_ORDER for t in tfs):
+        raise ValueError("Time frame non validi.")
+    return {"ok": True, "prefs": N.save_prefs(tfs, body.get("evening", True))}
 
 
 def api_notiftest(body):
@@ -610,7 +622,7 @@ import market as MK  # noqa: E402  (quadro di mercato, sessioni, reazione alla F
 
 ROUTES = {"/api/overview": api_overview, "/api/setup": api_setup, "/api/signals": api_signals, "/api/tick": api_tick, "/api/log": api_log, "/api/calendar": api_calendar, "/api/scan": api_scan, "/api/polymarket": api_polymarket,
           "/api/context": MK.api_context, "/api/sessions": MK.api_sessions, "/api/fomc": MK.api_fomc, "/api/benchmark": MK.api_benchmark, "/api/notifstatus": api_notifstatus}
-POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal, "/api/notiftest": api_notiftest}
+POST_ROUTES = {"/api/claude": api_claude, "/api/journal": api_journal, "/api/notiftest": api_notiftest, "/api/prefs": api_prefs}
 PUBLIC_FILES = ("/api/tick", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png")
 PASSWORD = os.environ.get("XAU_PASSWORD", "")
 HITS = {}  # indirizzo -> orari delle ultime richieste

@@ -25,7 +25,12 @@ import persist as PS  # noqa: E402
 
 SYMBOL = os.environ.get("XAU_SYMBOL", "XAUUSD")
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
-LOG_FILE = os.environ.get("LOG_FILE", "log.json")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")  # i file di stato stanno sempre accanto al programma, mai nella cartella da cui lo si avvia
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)  # senza questa cartella nessun file di stato (registro, promemoria, scelte) si potrebbe scrivere
+except OSError:
+    pass
+LOG_FILE = os.environ.get("LOG_FILE", os.path.join(DATA_DIR, "log.json"))
 DRY = "--dry" in sys.argv
 TEST = "--test" in sys.argv
 HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
@@ -304,7 +309,7 @@ def flush(items, now_ts, can_send):
     if not can_send or cooling():
         return sent, changed
     pend = [it for it in items if it.get("stance") == "favorevole" and not it.get("notified") and not it.get("symbol") and it.get("status") == "open"
-            and it.get("rr") in E.DEFAULT_RRS and now_ts - it["entry_ts"] < 6 * 3600]
+            and it.get("rr") in E.DEFAULT_RRS and it.get("tf") in prefs()["tfs"] and now_ts - it["entry_ts"] < 6 * 3600]
     if pend:
         try:
             for c in pend:
@@ -343,6 +348,75 @@ def flush(items, now_ts, can_send):
         except Exception as exc:  # noqa: BLE001
             print("  invio degli esiti non riuscito (si riprova): %s" % exc)
     return sent, changed
+
+
+PREFS_FILE = os.path.join(os.path.dirname(LOG_FILE) or ".", "prefs.json")
+
+
+def prefs():
+    """Scelte di Luca per le notifiche: su quali time frame avvisare e se mandare il riepilogo serale (predefinito: tutti i time frame, riepilogo sì)."""
+    PS.restore(PREFS_FILE, "prefs.json")
+    d = {"tfs": list(E.TF_ORDER), "evening": True}
+    try:
+        with open(PREFS_FILE, encoding="utf-8") as fh:
+            x = json.load(fh)
+        if isinstance(x.get("tfs"), list):
+            d["tfs"] = [t for t in x["tfs"] if t in E.TF_ORDER]
+        d["evening"] = bool(x.get("evening", True))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return d
+
+
+def save_prefs(tfs, evening):
+    d = {"tfs": [t for t in E.TF_ORDER if t in (tfs or [])], "evening": bool(evening)}
+    with open(PREFS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(d, fh)
+    PS.push(PREFS_FILE, "prefs.json", min_gap=0)
+    return d
+
+
+def evening_summary(items, now_u, now_ts, can_send):
+    """Riepilogo serale in UN messaggio (dalle 22:00 ora italiana, una volta al giorno): segnali favorevoli di oggi, esiti e categoria più debole."""
+    loc = E.to_local("rome", now_u)
+    if loc.hour < 22 or not can_send or cooling() or not prefs()["evening"]:
+        return 0
+    done = _load_rem()
+    k = "sera|" + loc.strftime("%Y-%m-%d")
+    if k in done:
+        return 0
+    import datetime as _dt
+    start = E.epoch(E.from_local("rome", _dt.datetime(loc.year, loc.month, loc.day)))
+    allit = list(items)
+    if os.environ.get("SCANNER", "1") != "0":
+        try:
+            import scanner as SC
+            allit += SC.history()
+        except Exception:  # noqa: BLE001
+            pass
+    sel = [x for x in allit if x.get("stance") == "favorevole" and x.get("entry_ts", 0) >= start and x.get("rr") in E.DEFAULT_RRS and x.get("tf") in E.TF_ORDER]
+    if not sel:
+        return 0
+    closed = [x for x in sel if x.get("status") in ("target", "stop", "none") and x.get("r") is not None]
+    w, l, op = sum(1 for x in sel if x.get("status") == "target"), sum(1 for x in sel if x.get("status") == "stop"), sum(1 for x in sel if x.get("status") == "open")
+    tot = sum(x["r"] for x in closed)
+    lines = ["Segnali favorevoli di oggi: %d (target %d, stop %d, ancora aperti %d)." % (len(sel), w, l, op), "R totale dei chiusi: %s." % sgn(tot)]
+    by = {}
+    for x in closed:
+        by.setdefault(x["tf"], []).append(x["r"])
+    cand = [(sum(v) / len(v), t, len(v)) for t, v in by.items() if len(v) >= 3]
+    if len(cand) >= 2:
+        cand.sort()
+        lines.append("Time frame più debole oggi: %s (R medio %s su %d). Il più forte: %s (%s su %d)." % (cand[0][1], sgn(cand[0][0]), cand[0][2], cand[-1][1], sgn(cand[-1][0]), cand[-1][2]))
+    lines.append("Dettagli in Avvisi, Segnali automatici. Solo analisi.")
+    try:
+        send("Riepilogo di oggi: %d segnali favorevoli" % len(sel), "\n".join(lines), "bar_chart")
+    except Exception as exc:  # noqa: BLE001
+        print("  riepilogo serale non inviato (si riprova): %s" % exc)
+        return 0
+    done[k] = now_ts
+    _save_rem(done)
+    return 1
 
 
 def reminder_state():
@@ -440,6 +514,10 @@ def run(topic=None, calendar=None):
     for it in closed:
         print("  ESITO %s: %s %s R" % (it["id"], it["status"], it["r"]))
     sent, changed = flush(items, now_ts, can_send)
+    try:
+        sent += evening_summary(items, now_u, now_ts, can_send)
+    except Exception as exc:  # noqa: BLE001
+        print("Riepilogo serale non riuscito: %s" % exc)
     if not DRY and (new or closed or changed):
         save_log(items, urgent=bool(sent))
     print("Registrati: %d nuovi, esiti chiusi: %d, notifiche inviate: %d" % (len(new), len(closed), sent))

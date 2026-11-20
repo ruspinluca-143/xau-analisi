@@ -173,6 +173,7 @@
       <div id="opPasteBox" hidden><textarea id="opText" aria-label="Testo copiato da MT5" rows="5" placeholder="Incolla qui le righe copiate da MT5 (con l'intestazione delle colonne)"></textarea><button class="btn primary" id="opImport">Importa</button></div>
       <p class="small" id="opMsg"></p>
       <p class="small" id="opCount" style="font-weight:700"></p>
+      <p class="small r" id="bkWarn" hidden></p>
       <p class="muted" id="opEmpty">Ancora nessuna operazione caricata.</p>
     </div>
     <div id="opData" hidden>
@@ -212,7 +213,11 @@
         <div id="opLot" style="margin-top:10px"></div></div>
       <div class="card"><h3>Confronto tra periodi</h3><canvas id="cvOpPer" class="cv short"></canvas><div id="opPeriods"></div></div>
       <div class="card"><h3>Ultime operazioni</h3><div id="opList"></div>
-        <div class="row gap" style="margin-top:10px"><button class="btn" id="opExport">Esporta CSV</button><button class="btn" id="opClear">Cancella dati</button></div></div>
+        <div class="row gap" style="margin-top:10px"><button class="btn" id="opExport">Esporta CSV</button><button class="btn" id="opClear">Cancella dati</button></div>
+        <div class="ctl-label" style="margin-top:12px">Copia di sicurezza</div>
+        <p class="muted small">I tuoi dati stanno solo su questo telefono. Salva ogni tanto un file di copia (operazioni, depositi e prelievi, diario, archivio dei segnali, impostazioni) e tienilo fuori dal telefono. Il ripristino <b>unisce</b> i dati: non cancella e non sovrascrive quelli già presenti.</p>
+        <div class="row gap"><button class="btn" id="bkSave" type="button">Salva copia di sicurezza</button><label class="btn" for="bkFile" style="cursor:pointer">Ripristina da copia</label><input type="file" id="bkFile" accept=".json,application/json" hidden></div>
+        <p class="small" id="bkNote"></p></div>
       <div class="card" id="opWhatIfCard"><h3>E se… (cosa sarebbe cambiato)</h3><div id="opWhatIf"></div></div>
       <div class="card" id="opBenchCard"><h3>Tu contro la regola dell'app</h3><div id="opBench"></div></div>
       <div class="card" id="opHeatCard"><h3>Mappa giorno × ora</h3><div id="opHeat"></div></div>
@@ -255,6 +260,7 @@
 <script src="segnali.js"></script>
 <script src="suggest.js"></script>
 <script src="guida.js"></script>
+<script src="backup.js"></script>
 <script src="analisi.js"></script>
 <script src="mercato.js"></script>
 </body>

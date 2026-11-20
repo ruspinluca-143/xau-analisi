@@ -31,8 +31,13 @@ REPS = 1500
 MIN_CASES = 20
 SE_MULT = 2.0
 WORKERS = 3
-OUT = os.environ.get("SCAN_FILE", "scan.json")
-HIST_FILE = os.environ.get("SCAN_HIST_FILE", "scan_hist.json")  # tutti i segnali trovati: restano (con l'esito) anche quando la scansione dopo non li vede più
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except OSError:
+    pass
+OUT = os.environ.get("SCAN_FILE", os.path.join(DATA_DIR, "scan.json"))
+HIST_FILE = os.environ.get("SCAN_HIST_FILE", os.path.join(DATA_DIR, "scan_hist.json"))  # tutti i segnali trovati: restano (con l'esito) anche quando la scansione dopo non li vede più
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 LOCK = threading.Lock()
 STATE = {"running": False, "runs": {}, "signals": {"1d": [], "1h": []}, "seen": [], "errors": {}, "loaded": False, "hist": {}, "last_resolve": 0, "resolving": False}
@@ -105,7 +110,7 @@ def flush():
     now = time.time()
     sent = 0
     with LOCK:
-        pend = sorted((x for x in STATE["hist"].values() if x.get("status") == "open" and not x.get("notified") and now - x.get("entry_ts", 0) < 6 * 3600 and x.get("rr") in E.DEFAULT_RRS),
+        pend = sorted((x for x in STATE["hist"].values() if x.get("status") == "open" and not x.get("notified") and now - x.get("entry_ts", 0) < 6 * 3600 and x.get("rr") in E.DEFAULT_RRS and x.get("tf") in N.prefs()["tfs"]),
                       key=lambda x: (x.get("tier") != "netto", -x.get("entry_ts", 0)))
     if pend:
         def one(x):

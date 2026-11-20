@@ -35,10 +35,20 @@
     <label class="small">Direzione<select data-f="dir">${opt("", "Tutte")}${opt("buy", "BUY")}${opt("sell", "SHORT")}</select></label>
     <label class="small">Target<select data-f="rr">${opt("", "Tutti")}${opt("2", "2R")}${opt("3", "3R")}${opt("4", "4R")}</select></label>
     <label class="small">Esito<select data-f="res">${opt("", "Tutti")}${opt("chiusi", "Chiusi")}${opt("target", "Solo target")}${opt("stop", "Solo stop")}${opt("none", "Senza esito netto")}${opt("open", "Aperti")}</select></label>
-    <button class="btn" id="afReset" type="button">Togli i filtri</button>`;
+    <button class="btn" id="afReset" type="button">Togli i filtri</button>
+    <button class="btn" id="afCsv" type="button">Scarica segnali (CSV)</button>`;
   const sync = () => { box.querySelectorAll("select").forEach((s) => { s.value = F[s.dataset.f]; }); };
   box.querySelectorAll("select").forEach((s) => { s.onchange = () => { F[s.dataset.f] = s.value; if (typeof renderAuto === "function") renderAuto(); }; });
   box.querySelector("#afReset").onclick = () => { Object.keys(F).forEach((k) => (F[k] = "")); sync(); if (typeof renderAuto === "function") renderAuto(); };
+  box.querySelector("#afCsv").onclick = () => {
+    const L = (window.autoCurrent || []).slice().sort((x, y) => x.entry_ts - y.entry_ts);
+    const when = (ts) => new Date(ts * 1000).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const num = (v) => (v == null ? "" : String(v).replace(".", ","));
+    const rows = [["data_ora_italia", "strumento", "time_frame", "setup", "direzione", "target_R", "ingresso", "stop", "target_prezzo", "esito", "R", "livello"]];
+    L.forEach((x) => rows.push([when(x.entry_ts), x.symbol || "XAUUSD", x.tf, SETUPN[x.setup] || x.setup, x.dir === "buy" ? "BUY" : "SHORT", num(x.rr), num(x.entry), num(x.stop), num(x.target), x.status, num(x.r), x.tier || ""]));
+    const blob = new Blob(["\ufeff" + rows.map((r) => r.join(";")).join("\n")], { type: "text/csv" }), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "segnali-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  };
   const n1 = (x) => (x == null || isNaN(x) ? "–" : Number(x).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const sg = (x) => (x > 0 ? "+" : "") + n1(x), cl = (x) => (x > 0 ? "g" : x < 0 ? "r" : "");
   const p0 = (x) => Math.round(x * 100) + "%";

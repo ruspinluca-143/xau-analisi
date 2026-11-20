@@ -93,18 +93,32 @@
   async function loadFed() { try { FED = await get("/api/fomc"); } catch (e) { const el = $("#fedBody"); if (el && !FED) el.innerHTML = `<p class="muted">Non riesco a leggere i dati adesso (${esc(e.message)}).</p>`; return; } fedCard(); }
 
   /* stato delle notifiche sul telefono: collegate? ultimi invii dal server + notifica di prova */
-  let NT = null, ntMsg = "";
+  let NT = null, ntMsg = "", prefMsg = "", prefDirty = false;
   const hm = (ts) => new Date(ts * 1000).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
   function ntfyBox() {
     const el = $("#ntfyBox"); if (!el) return;
+    if (prefDirty && NT) return; // non si ridisegna mentre stai scegliendo
     if (!NT) { el.innerHTML = ntMsg ? `<p class="muted small">${esc(ntMsg)}</p>` : ""; return; }
     const ev = NT.events.map((e) => `<div class="sigrow"><div class="sr1"><b>${esc(e.title)}</b><span class="when">${hm(e.t)}</span><span class="pill ${e.ok ? "green" : "red"}">${e.ok ? "inviata" : "non inviata"}</span></div>${e.ok ? "" : `<div class="sr2"><span>${esc(e.err)}</span></div>`}</div>`).join("");
     el.innerHTML = `<div class="ctl-label" style="margin-top:10px">Notifiche sul telefono</div>
       <p class="small">${NT.ntfy ? "Collegate sul server." : "<b class=\"r\">Non collegate sul server</b> (manca il canale): non partirà nessuna notifica."} ${NT.token ? "Token ntfy: <b class=\"g\">attivo</b>." : "Token ntfy: <b class=\"r\">non impostato</b> (variabile NTFY_TOKEN su Render)."}${NT.pause ? " <b class=\"r\">Invio in pausa per " + Math.ceil(NT.pause / 60) + " min dopo un rifiuto del servizio.</b>" : ""} Server avviato il ${hm(NT.started)}${NT.tick_age != null ? ", ultimo controllo " + Math.round(NT.tick_age / 60) + " min fa" : ""}.</p>
       <p class="small">${(() => { const k = Object.keys(NT.reminders || {}).pop(), today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" }); return k && k.endsWith(today) ? "Promemoria delle 7 di oggi: <b class=\"g\">inviato alle " + hm(NT.reminders[k]).slice(-5) + "</b>." : "Promemoria delle 7 di oggi: <b>non ancora inviato</b> (parte tra le 7:00 e le 10:00)."; })()}</p>
       ${ev || '<p class="muted small">Nessuna notifica registrata.</p>'}
+      <div class="ctl-label" style="margin-top:10px">Avvisami sul telefono per questi time frame</div>
+      <div class="row gap" id="prefTf" style="flex-wrap:wrap">${["5m", "30m", "1h", "4h", "1d", "1w"].map((t) => `<label class="chk"><input type="checkbox" data-tf="${t}" ${(NT.prefs ? NT.prefs.tfs : []).includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
+      <label class="chk"><input type="checkbox" id="prefEve" ${NT.prefs && NT.prefs.evening ? "checked" : ""}> Riepilogo serale (dopo le 22, un solo messaggio)</label>
+      ${NT.pin_required ? '<label class="small">PIN <input id="prefPin" type="password" autocomplete="off" style="max-width:120px"></label>' : ""}
+      <div class="row gap" style="margin-top:6px"><button class="btn" id="prefSave" type="button">Salva scelte</button></div><p class="small" id="prefMsg">${esc(prefMsg)}</p>
+      <p class="muted small">I segnali sugli altri time frame restano nell'elenco dei Segnali automatici: cambia solo se ti arriva la notifica. I promemoria (7:00 e notizie rosse) arrivano sempre.</p>
       <div class="row gap" style="margin-top:8px"><button class="btn" id="ntfyTest">Manda una notifica di prova</button></div><p class="small" id="ntfyMsg">${esc(ntMsg)}</p>
       <p class="muted small">"Inviata" vuol dire che il servizio l'ha accettata: se sul telefono non compare, controlla nell'app ntfy che sia iscritto allo stesso canale e che le notifiche e il risparmio batteria non la blocchino. L'elenco è salvato anche su GitHub (se il token è attivo), quindi resta dopo i riavvii.</p>`;
+    const sv = $("#prefSave"); if (sv) sv.onclick = async () => {
+      const tfs = [...document.querySelectorAll("#prefTf input:checked")].map((i) => i.dataset.tf), pin = $("#prefPin") ? $("#prefPin").value : "";
+      try { const r = await post("/api/prefs", { tfs, evening: $("#prefEve").checked, pin }); NT.prefs = r.prefs; prefMsg = "Salvato: avvisi per " + (r.prefs.tfs.join(", ") || "nessun time frame") + (r.prefs.evening ? ", con riepilogo serale." : ", senza riepilogo serale."); }
+      catch (e) { prefMsg = e.message; }
+      prefDirty = false; ntfyBox();
+    };
+    document.querySelectorAll("#prefTf input, #prefEve").forEach((i) => (i.onchange = () => { prefDirty = true; }));
     const b = $("#ntfyTest"); if (b) b.onclick = async () => { b.disabled = true; try { await post("/api/notiftest", {}); ntMsg = "Prova inviata alle " + hm(Date.now() / 1000) + ": controlla il telefono."; } catch (e) { ntMsg = e.message; } await loadNtfy(); };
   }
   const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }), j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error || "errore"); return j; };

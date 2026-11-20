@@ -4,6 +4,7 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **20/11/2026** — Nuovo: **copia di sicurezza** dei tuoi dati (Operazioni, in fondo) con salvataggio e ripristino; **scelta dei time frame** per cui ricevere la notifica e **riepilogo serale** in un solo messaggio (Avvisi, "Notifiche sul telefono"); **Scarica segnali (CSV)** nei Segnali automatici.
 - **20/11/2026** — Nuovo: questo **manuale d'uso** dentro l'app (pulsante **?** in alto). Corretto: in Avvisi, nei Segnali automatici, i pulsanti delle categorie di "Dove sbagli" andavano fuori dal riquadro: ora vanno a capo.
 - **20/11/2026** — Tolti i time frame **1 minuto** e **15 minuti**: restano 5m, 30m, 1h, 4h, 1d, 1w. L'apertura di Londra e di New York c'è solo a 5 minuti. I vecchi segnali su 1m e 15m non si vedono né si contano più.
 - **20/11/2026** — Notifiche: se il servizio ntfy risponde "troppe richieste" (errore 429) l'app aspetta e riprova; i segnali favorevoli di un giro arrivano **in un solo messaggio**; tetto di 150 messaggi al giorno (i promemoria passano sempre); in Avvisi, "Notifiche sul telefono" mostra se il token è attivo e perché un invio fallisce.
@@ -102,7 +103,7 @@ A cosa serve: farti arrivare i segnali e capire come stanno andando.
 
 ### Avvisi (nell'app)
 - **Attiva avvisi:** con l'app aperta, suono e notifica del browser quando compare un segnale. Scegli i time frame, il tipo di segnale e se avvisare solo i favorevoli. **Prova suono** controlla l'audio.
-- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate, se il **token ntfy** è attivo, quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "429 troppe richieste").
+- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate, se il **token ntfy** è attivo, quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "429 troppe richieste"). Qui scegli anche **per quali time frame ricevere la notifica** (i segnali degli altri restano nell'elenco ma non ti avvisano) e se vuoi il **riepilogo serale**; premi **Salva scelte**.
 
 ### Notizie importanti in arrivo
 - Solo gli eventi "rossi" (impatto alto) di USD, EUR, GBP: tassi, inflazione, lavoro USA, discorsi delle banche centrali. Orari in ora italiana. **Toccando un evento** vedi gli scenari: cosa tende a fare l'oro se il dato è sopra, in linea o sotto le attese. Sono regole generali, non percentuali né previsioni.
@@ -113,6 +114,7 @@ A cosa serve: farti arrivare i segnali e capire come stanno andando.
 ### Segnali automatici
 A cosa serve: l'elenco completo di tutti i segnali favorevoli trovati dal server da solo, anche con l'app chiusa, con com'è andata (target, stop, ancora aperto). Include **oro, titoli e cripto**.
 - **Statistiche** in alto: segnali chiusi, target e stop, percentuale di vinte, R totale e curva.
+- **Scarica segnali (CSV):** salva in un file i segnali che vedi con i filtri attivi (data, strumento, time frame, setup, direzione, target, prezzi, esito, R, livello) per analizzarli fuori dall'app.
 - **Filtri:** strumento (oro, titoli, cripto), time frame, setup, direzione, target ed esito. Cambiano elenco e numeri. **Togli i filtri** li azzera.
 - **Dove sbagli:** confronta le categorie dalla peggiore alla migliore (strumento, simbolo, livello, time frame, setup, direzione, target, ora, giorno) con percentuale di target e stop, R medio e R totale. Ogni categoria con meno di 8 segnali chiusi è segnata "pochi casi": col caso pesa molto, quindi cerca i punti deboli che restano tali quando i segnali aumentano.
 - **Azzera da adesso:** ricomincia il conteggio da questo momento sul tuo telefono; i segnali precedenti non si mostrano né si contano ma non sono cancellati. **Ripristina tutto** li rimette.
@@ -173,6 +175,7 @@ A cosa serve: caricare le tue operazioni di MetaTrader 5, vedere come stai andan
 
 ### Ultime operazioni
 - Le ultime 60 operazioni, con **Esporta CSV** e **Cancella dati**.
+- **Copia di sicurezza:** **Salva copia di sicurezza** scarica un file con operazioni, depositi e prelievi, diario, archivio dei segnali e impostazioni. **Ripristina da copia** lo rilegge **unendo** i dati: non cancella e non sovrascrive quelli già presenti. Tieni il file fuori dal telefono (cloud, email).
 
 ### E se… (cosa sarebbe cambiato)
 - Rifà la tua storia con una regola diversa: escludere un giorno o un'ora, massimo di operazioni al giorno, fermarti dopo una perdita nel giorno, lotto fisso. Mostra la differenza. Serve a capire **dove** si perde, non a prevedere: con pochi dati un giorno "cattivo" può essere solo caso.
@@ -195,6 +198,7 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 - **30 minuti prima di una notizia rossa** (USD, EUR, GBP).
 - **Segnali favorevoli** su oro, titoli e cripto, con target 2R, 3R o 4R. Se nello stesso giro ce ne sono più di uno, arrivano **in un solo messaggio**.
 - **Esiti** dei segnali già avvisati (target, stop).
+- **Riepilogo serale (dopo le 22):** un solo messaggio con i segnali favorevoli di oggi, quanti a target e stop, l'R totale e il time frame più debole e più forte (se ci sono almeno 3 chiusi). Si disattiva dalle scelte in Avvisi.
 - **Prova:** quando premi "Manda una notifica di prova".
 
 ### Come si collega
@@ -221,7 +225,7 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 - **Il prezzo dell'oro dice "feed ritardato":** il feed live non ha risposto; i dati di Yahoo hanno circa 10 minuti di ritardo. Si risolve da solo.
 - **Non arrivano notifiche:** vedi la sezione "Notifiche sul telefono" qui sopra.
 - **I numeri di "Dove sbagli" sembrano strani:** guarda "pochi casi"; sotto 8 segnali chiusi per categoria non c'è abbastanza dato.
-- **Ho perso le operazioni:** i dati stanno sul telefono; se cancelli i dati del browser spariscono. Esporta il CSV ogni tanto.
+- **Ho perso le operazioni:** i dati stanno sul telefono; se cancelli i dati del browser spariscono. Salva ogni tanto la **copia di sicurezza** (Operazioni, in fondo) e tienila fuori dal telefono: con **Ripristina da copia** ritrovi tutto. L'app te lo ricorda se la copia manca o ha più di 14 giorni.
 
 ## 12. Glossario
 

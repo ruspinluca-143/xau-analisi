@@ -741,6 +741,7 @@ function renderAuto() {
   const base = AUTO.filter((x) => x.stance === "favorevole" && RR_OK(x) && TF_OK(x) && afterReset(x)); // oro, titoli e cripto nello stesso elenco; i filtri separano gli strumenti
   if (window.autoBreakdown) window.autoBreakdown(base); // tabella "Dove sbagli"
   const all = base.filter(window.autoPass || (() => true)); // filtri scelti dall'utente
+  window.autoCurrent = all; // per "Scarica segnali (CSV)"
   if (!all.length) { st.innerHTML = '<p class="muted">Ancora nessun segnale favorevole registrato. Il controllo automatico salva quelli favorevoli man mano che compaiono.</p>'; tb.innerHTML = ""; $("#autoStance").innerHTML = ""; drawAutoEq([]); return; }
   const fav = all.filter((x) => ["target", "stop", "none"].includes(x.status)), open = all.filter((x) => x.status === "open").length;
   const box = (title, s) => s ? `<div class="stat"><span>${title}</span><b>${s.n} segnali</b></div><div class="stat"><span>Target / stop</span><b><span class="g">${s.w}</span> / <span class="r">${s.l}</span></b></div><div class="stat"><span>Win rate</span><b>${pct(s.win)}</b></div><div class="stat"><span>R totale</span><b class="${s.tot >= 0 ? "g" : "r"}">${sgn(s.tot)}</b></div>` : `<div class="stat"><span>${title}</span><b>nessuno ancora</b></div>`;
