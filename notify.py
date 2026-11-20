@@ -275,6 +275,8 @@ def _send_ntfy(title, body, tags):
             except ValueError:
                 ra = 0
             pause = min(1800, max(ra, 120 * (2 ** min(COOL["n"], 4))))
+            if telegram_on():
+                pause = max(pause, 1800)  # con Telegram collegato non si insiste con ntfy: un tentativo ogni 30 minuti
             COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
             record(title, False, "ntfy 429 troppe richieste: riprovo tra %d minuti. %s" % (pause // 60, detail))
         else:
@@ -282,6 +284,8 @@ def _send_ntfy(title, body, tags):
         raise
     except Exception as exc:  # noqa: BLE001
         pause = min(300, 60 * (COOL["n"] + 1))  # errore di rete: pausa breve e crescente (1, 2, 3... fino a 5 minuti), non un tentativo al minuto
+        if telegram_on():
+            pause = 1800  # con Telegram collegato ntfy si riprova solo ogni 30 minuti: niente attese di 12 secondi a ogni avviso, niente insistenza su un servizio che non risponde
         COOL["until"], COOL["n"] = time.time() + pause, COOL["n"] + 1
         record(title, False, "ntfy " + exc.__class__.__name__ + ": " + str(exc) + " (riprovo tra %d min)" % (pause // 60))  # l'errore non contiene il nome del canale
         raise
