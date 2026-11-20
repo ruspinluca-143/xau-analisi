@@ -37,7 +37,7 @@ LOG_FILE = os.environ.get("LOG_FILE", os.path.join(DATA_DIR, "log.json"))
 DRY = "--dry" in sys.argv
 TEST = "--test" in sys.argv
 HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
-BREAKOUT_TFS = ("5m", "30m", "1h", "4h", "1d", "1w")  # niente 1 minuto e 15 minuti
+BREAKOUT_TFS = ("5m", "30m", "1h", "4h", "1d")  # solo questi (niente 1m, 15m, 1w)
 SESSION_TFS = ("5m",)
 REPLAYS = 3000
 KEEP_DAYS = 90
@@ -128,11 +128,18 @@ def candidates(ys, now_u):
     return out
 
 
-def title_of(c, prefix=""):
-    dn = "BUY" if c["dir"] == "buy" else "SHORT"
-    sym = "XAUUSD" if SYMBOL.upper() in ("XAUUSD", "GC=F") else SYMBOL
-    t = "%s%s %s - %s - target %gR" % (prefix, dn, sym, c["label"], c["rr"])
+TFN = {"5m": "5min", "30m": "30min", "1h": "1h", "4h": "4h", "1d": "1d"}
+
+
+def compact(c):
+    """Nome del segnale nel formato scelto da Luca: STRUMENTO-BUY/SELL-TIMEFRAME-R, per esempio XAUUSD-SELL-5min-4R."""
+    sym = str(c.get("symbol") or "XAUUSD").upper()
+    t = "%s-%s-%s-%gR" % (sym, "BUY" if c.get("dir") == "buy" else "SELL", TFN.get(c.get("tf"), c.get("tf")), c.get("rr"))
     return t.encode("ascii", "ignore").decode("ascii")
+
+
+def title_of(c, prefix=""):
+    return prefix + compact(c)
 
 
 def favs_line(c):
@@ -143,10 +150,10 @@ def favs_line(c):
 
 
 def message(c):
-    body = ("Segnale favorevole scattato %d min fa (alle %s ora italiana).\nIngresso %s - Stop %s - Target %s\n"
+    body = ("Setup: %s.\nSegnale favorevole scattato %d min fa (alle %s ora italiana).\nIngresso %s - Stop %s - Target %s\n"
             "Simulazione: target %.0f%%, stop %.0f%%. Storico: %d casi, R medio %s.\n"
             "%sI prezzi sono quelli dei dati: confrontali col tuo grafico. Solo analisi, decidi tu."
-            % (c["age_min"], E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]),
+            % (c.get("label", "Breakout"), c["age_min"], E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]),
                c["sim_target"] * 100, c["sim_stop"] * 100, c["hist_n"], sgn(c["hist_r"]), favs_line(c)))
     return title_of(c), body
 
@@ -157,7 +164,7 @@ def outcome_message(c):
     tag = {"target": "white_check_mark", "stop": "x", "none": "hourglass_flowing_sand"}[st]
     verdict = {"target": "Il segnale era buono.", "stop": "Questa volta il segnale non era buono.",
                "none": "Il segnale non ha dato un esito netto."}[st]
-    title = title_of(c, "Esito: ") + " - " + word + " (%s R)" % ("%+.1f" % r)
+    title = "%s: %s (%s R)" % (compact(c), word, "%+.1f" % r)
     body = ("%s Segnale delle %s ora italiana: ingresso %s, stop %s, target %s. Risultato %s R.\n%s"
             % (word.capitalize(), E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]), sgn(r), verdict))
     return title.encode("ascii", "ignore").decode("ascii"), body, tag
@@ -251,7 +258,7 @@ def _send_ntfy(title, body, tags):
     headers = {"Title": title, "Priority": "high", "Tags": tags}
     if NTFY_TOKEN:
         headers["Authorization"] = "Bearer " + NTFY_TOKEN
-    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.encode("utf-8"), method="POST", headers=headers)
+    req = urllib.request.Request("https://ntfy.sh/" + TOPIC, data=body.replace("**", "").encode("utf-8"), method="POST", headers=headers)
     try:
         try:
             r = urllib.request.urlopen(req, timeout=12)
@@ -291,24 +298,39 @@ def _send_ntfy(title, body, tags):
         raise
 
 
+def _tg_html(title, body):
+    import html
+    import re as _re
+    t = "<b>%s</b>\n%s" % (html.escape(title), _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(body)))
+    return t[:3900]
+
+
 def _send_telegram(title, body):
-    data = json.dumps({"chat_id": TG_CHAT, "text": ("%s\n%s" % (title, body))[:3900], "disable_web_page_preview": True}).encode("utf-8")
-    req = urllib.request.Request("https://api.telegram.org/bot%s/sendMessage" % TG_TOKEN, data=data, method="POST", headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=12) as r:
-            record(title + " (via Telegram)", True)
-            return r.status
-    except urllib.error.HTTPError as exc:
-        detail = ""
+    url = "https://api.telegram.org/bot%s/sendMessage" % TG_TOKEN
+    for html_mode in (True, False):  # prima in grassetto; se Telegram non accetta il formato, testo semplice
+        payload = {"chat_id": TG_CHAT, "disable_web_page_preview": True}
+        if html_mode:
+            payload.update({"text": _tg_html(title, body), "parse_mode": "HTML"})
+        else:
+            payload["text"] = ("%s\n%s" % (title, body.replace("**", "")))[:3900]
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers={"Content-Type": "application/json"})
         try:
-            detail = json.loads(exc.read().decode("utf-8", "ignore")).get("description", "")[:120]
-        except Exception:  # noqa: BLE001
-            pass
-        record(title, False, "Telegram HTTP %s %s" % (exc.code, detail))  # mai il token nei messaggi
-        raise
-    except Exception as exc:  # noqa: BLE001
-        record(title, False, "Telegram " + exc.__class__.__name__)
-        raise
+            with urllib.request.urlopen(req, timeout=12) as r:
+                record(title + " (via Telegram)", True)
+                return r.status
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = json.loads(exc.read().decode("utf-8", "ignore")).get("description", "")[:120]
+            except Exception:  # noqa: BLE001
+                pass
+            if html_mode and exc.code == 400 and "parse" in detail.lower():
+                continue
+            record(title, False, "Telegram HTTP %s %s" % (exc.code, detail))  # mai il token nei messaggi
+            raise
+        except Exception as exc:  # noqa: BLE001
+            record(title, False, "Telegram " + exc.__class__.__name__)
+            raise
 
 
 BUDGET = {"day": "", "n": 0}
@@ -422,7 +444,7 @@ def flush(items, now_ts, can_send):
                 title = ("%d segnali favorevoli sull'oro" % len(pend))
                 lines = []
                 for c in pend:
-                    lines.append("%s - ingresso %s, stop %s, target %s (scattato alle %s ora italiana; simulazione %.0f%%, storico R %s)" % (
+                    lines.append("**%s** - ingresso %s, stop %s, target %s (scattato alle %s ora italiana; simulazione %.0f%%, storico R %s)" % (
                         title_of(c), fmt(c["entry"]), fmt(c["stop"]), fmt(c["target"]), E.hhmm_it(c["entry_ts"] + E.TF[c["tf"]][2]), c["sim_target"] * 100, sgn(c["hist_r"])))
                 send(title, "\n".join(lines) + "\nI prezzi sono quelli dei dati: confrontali col tuo grafico. Solo analisi, decidi tu.", "chart_with_upwards_trend")
             for c in pend:
@@ -430,7 +452,10 @@ def flush(items, now_ts, can_send):
             sent, changed = sent + 1, True
         except Exception as exc:  # noqa: BLE001
             print("  invio non riuscito (si riprova): %s" % exc)
-    outs = [it for it in items if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and not it.get("symbol")]
+    for it in items:  # esiti di vecchi segnali fuori dall'elenco (altri target o time frame): non si avvisano mai, si segnano come già gestiti
+        if it.get("notified") and not it.get("out_sent") and not E.IN_SCOPE(it):
+            it["out_sent"], changed = True, True
+    outs = [it for it in items if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and not it.get("symbol") and E.IN_SCOPE(it)]
     if outs and not cooling():
         try:
             if len(outs) == 1:
@@ -440,7 +465,7 @@ def flush(items, now_ts, can_send):
                 lines = []
                 for it in outs:
                     word = {"target": "TARGET", "stop": "STOP", "none": "senza esito netto"}[it["status"]]
-                    lines.append("%s: %s (%s R)" % (title_of(it), word, "%+.1f" % it["r"]))
+                    lines.append("**%s**: %s (%s R)" % (compact(it), word, "%+.1f" % it["r"]))
                 send("%d esiti dei segnali" % len(outs), "\n".join(lines) + "\nSolo analisi.", "bell")
             for it in outs:
                 it["out_sent"] = True
@@ -494,7 +519,7 @@ def evening_summary(items, now_u, now_ts, can_send):
             allit += SC.history()
         except Exception:  # noqa: BLE001
             pass
-    sel = [x for x in allit if x.get("stance") == "favorevole" and x.get("entry_ts", 0) >= start and x.get("rr") in E.DEFAULT_RRS and x.get("tf") in E.TF_ORDER]
+    sel = [x for x in allit if x.get("stance") == "favorevole" and x.get("entry_ts", 0) >= start and E.IN_SCOPE(x)]
     if not sel:
         return 0
     closed = [x for x in sel if x.get("status") in ("target", "stop", "none") and x.get("r") is not None]

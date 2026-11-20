@@ -12,7 +12,7 @@
   const KINDN = { oro: "Oro", titoli: "Titoli", cripto: "Cripto" };
   const SETUPN = { breakout: "Breakout", london: "Apertura Londra", ny: "Apertura New York" };
   const DIMS = {
-    tf: { label: "Time frame", get: (x) => x.tf, order: ["5m", "30m", "1h", "4h", "1d", "1w"] },
+    tf: { label: "Time frame", get: (x) => x.tf, order: ["5m", "30m", "1h", "4h", "1d"] },
     setup: { label: "Setup", get: (x) => SETUPN[x.setup] || x.setup, order: ["Breakout", "Apertura Londra", "Apertura New York"] },
     dir: { label: "Direzione", get: (x) => (x.dir === "buy" ? "BUY" : "SHORT"), order: ["BUY", "SHORT"] },
     rr: { label: "Target", get: (x) => x.rr + "R", order: ["2R", "3R", "4R"] },

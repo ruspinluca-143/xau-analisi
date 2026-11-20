@@ -1,8 +1,8 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const TFS = ["5m", "30m", "1h", "4h", "1d", "1w"]; // niente 1 minuto e 15 minuti
-const TF_OK = (x) => !["1m", "15m"].includes(x.tf); // i segnali già registrati su questi time frame non si mostrano né si contano
+const TFS = ["5m", "30m", "1h", "4h", "1d"]; // solo questi time frame: niente 1m, 15m, 1w
+const TF_OK = (x) => TFS.includes(x.tf); // i segnali già registrati su altri time frame non si mostrano né si contano
 const RRS = [2, 3, 4]; // solo target 2R, 3R e 4R
 const RR_OK = (x) => [2, 3, 4].includes(Number(x.rr)); // i segnali già registrati con altri target non si mostrano né si contano
 const S = { symbol: "XAUUSD", spot: "", tf: "1h", setup: "breakout", rr: 2, dir: "buy", ov: null, data: null, gold: true, seq: 0, selCase: null, tab: "oggi" };
@@ -494,6 +494,8 @@ function renderTm() {
 
 /* ---------- avvisi ---------- */
 const AL = Object.assign({ on: false, tfs: ["5m", "1h"], setups: ["breakout"], stance: "fav" }, JSON.parse(localStorage.getItem("xau_alerts") || "{}"));
+AL.tfs = (AL.tfs || []).filter((t) => TFS.includes(t)); // scelte vecchie salvate sul telefono (1m, 15m, 1w) non contano più
+if (!AL.tfs.length) AL.tfs = ["5m", "1h"];
 const seen = new Set(JSON.parse(localStorage.getItem("xau_seen") || "[]"));
 let alTimer = null, audioCtx = null;
 function saveAl() { localStorage.setItem("xau_alerts", JSON.stringify(AL)); localStorage.setItem("xau_seen", JSON.stringify([...seen].slice(-300))); }
@@ -595,7 +597,7 @@ load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 30000);
 
 /* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
-const OPP_TFS = ["5m", "30m", "1h", "4h", "1d", "1w"];
+const OPP_TFS = ["5m", "30m", "1h", "4h", "1d"];
 let oppRunning = false;
 function closeOpp() { $("#oppSheet").hidden = true; document.body.style.overflow = ""; }
 function applyOpp(c) {

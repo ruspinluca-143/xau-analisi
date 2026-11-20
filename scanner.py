@@ -114,13 +114,12 @@ def flush():
                       key=lambda x: (x.get("tier") != "netto", -x.get("entry_ts", 0)))
     if pend:
         def one(x):
-            return "%s %s %s - target %gR%s: ingresso %s, stop %s, target %s (simulazione %.0f%%, storico %d casi, R %+.2f)" % (
-                x["symbol"], "BUY" if x["dir"] == "buy" else "SHORT", x["tf"], x["rr"], "" if x.get("tier") == "netto" else " (possibile)", _fmt(x["entry"]), _fmt(x["stop"]),
-                _fmt(x["target"]), x["sim_target"] * 100, x["hist_n"], x["hist_r"])
+            return "**%s**%s: ingresso %s, stop %s, target %s (simulazione %.0f%%, storico %d casi, R %+.2f)" % (
+                N.compact(x), "" if x.get("tier") == "netto" else " (possibile)", _fmt(x["entry"]), _fmt(x["stop"]), _fmt(x["target"]), x["sim_target"] * 100, x["hist_n"], x["hist_r"])
         try:
             if len(pend) == 1:
                 x = pend[0]
-                _send("TITOLO %s - %s %s - target %gR%s" % (x["symbol"], "BUY" if x["dir"] == "buy" else "SHORT", x["tf"], x["rr"], "" if x.get("tier") == "netto" else " (possibile)"),
+                _send(N.compact(x) + ("" if x.get("tier") == "netto" else " (possibile)"),
                       "Segnale favorevole su %s (%s), livello %s.\n%s\nPrezzi dei dati (possono avere ritardo). Solo analisi, decidi tu." % (
                           x["symbol"], x["tf"], "netto" if x.get("tier") == "netto" else "possibile", one(x)), "chart_with_upwards_trend" if x["dir"] == "buy" else "chart_with_downwards_trend")
             else:
@@ -153,12 +152,15 @@ def resolve_open(force=False):
             import notify as N
             closed = N.resolve(items, None, int(now))
             done = len(closed)
-            outs = [it for it in STATE["hist"].values() if it.get("notified") and not it.get("out_sent") and it.get("status") in ("target", "stop", "none") and (N.enabled() or TOPIC) and not N.cooling()]
+            for it in STATE["hist"].values():  # esiti di vecchi segnali fuori dall'elenco (altri target o time frame): mai avvisati
+                if it.get("notified") and not it.get("out_sent") and not E.IN_SCOPE(it):
+                    it["out_sent"] = True
+            outs = [it for it in STATE["hist"].values() if it.get("notified") and not it.get("out_sent") and E.IN_SCOPE(it) and it.get("status") in ("target", "stop", "none") and (N.enabled() or TOPIC) and not N.cooling()]
             if outs:
                 try:
                     W = {"target": "TARGET preso", "stop": "STOP preso", "none": "finestra finita"}
-                    lines = ["%s %s %s: %s (%+.2f R)" % (it["symbol"], "BUY" if it["dir"] == "buy" else "SHORT", it["tf"], W.get(it["status"], it["status"]), it["r"] or 0.0) for it in outs]
-                    _send(("ESITO TITOLO %s - %s" % (outs[0]["symbol"], W.get(outs[0]["status"], ""))) if len(outs) == 1 else "%d esiti su titoli e cripto" % len(outs), "\n".join(lines) + "\nSolo analisi.",
+                    lines = ["**%s**: %s (%+.2f R)" % (N.compact(it), W.get(it["status"], it["status"]), it["r"] or 0.0) for it in outs]
+                    _send(("%s: %s (%+.2f R)" % (N.compact(outs[0]), W.get(outs[0]["status"], ""), outs[0]["r"] or 0.0)) if len(outs) == 1 else "%d esiti su titoli e cripto" % len(outs), "\n".join(lines) + "\nSolo analisi.",
                           "white_check_mark" if len(outs) == 1 and outs[0]["status"] == "target" else "bell")
                     for it in outs:
                         it["out_sent"] = True

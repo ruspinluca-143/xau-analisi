@@ -4,12 +4,14 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **20/11/2026** — **Notifiche con il nome nel formato STRUMENTO-BUY/SELL-TIME FRAME-R**, per esempio `XAUUSD-SELL-5min-4R` o `TSLA-BUY-1h-3R`, **in grassetto su Telegram** (su ntfy il titolo è già in evidenza). Gli esiti e i riepiloghi usano lo stesso nome.
+- **20/11/2026** — **Solo target 2R, 3R, 4R e solo time frame 5m, 30m, 1h, 4h, 1d** (tolti anche la settimana, 1m, 15m e i target 1R, 1,5R, 5R). Il server rifiuta le richieste fuori da questo elenco; i segnali vecchi fuori elenco non si mostrano, non si contano e **non mandano più nemmeno l'avviso dell'esito** (prima potevano ancora arrivare avvisi con target 1R).
 - **20/11/2026** — Con **Telegram** collegato, se ntfy non risponde il server lo riprova solo ogni 30 minuti (gli avvisi partono subito su Telegram, senza attese). Quando ntfy tornerà libero lo riprende da solo.
 - **20/11/2026** — Nuovo: **Telegram come secondo canale** per le notifiche (facoltativo). Se ntfy non è raggiungibile dal server, gli avvisi arrivano su Telegram. In Avvisi, "Notifiche sul telefono" dice se Telegram è attivo.
 - **20/11/2026** — Corretto: dalle 16:46 il server non riusciva a raggiungere il servizio delle notifiche ("rete non raggiungibile") e nessun avviso arrivava. Ora, in quel caso, riprova con una connessione IPv4 e aspetta qualche minuto fra un tentativo e l'altro invece di insistere ogni minuto.
 - **20/11/2026** — Nuovo: **copia di sicurezza** dei tuoi dati (Operazioni, in fondo) con salvataggio e ripristino; **scelta dei time frame** per cui ricevere la notifica e **riepilogo serale** in un solo messaggio (Avvisi, "Notifiche sul telefono"); **Scarica segnali (CSV)** nei Segnali automatici.
 - **20/11/2026** — Nuovo: questo **manuale d'uso** dentro l'app (pulsante **?** in alto). Corretto: in Avvisi, nei Segnali automatici, i pulsanti delle categorie di "Dove sbagli" andavano fuori dal riquadro: ora vanno a capo.
-- **20/11/2026** — Tolti i time frame **1 minuto** e **15 minuti**: restano 5m, 30m, 1h, 4h, 1d, 1w. L'apertura di Londra e di New York c'è solo a 5 minuti. I vecchi segnali su 1m e 15m non si vedono né si contano più.
+- **20/11/2026** — Tolti i time frame **1 minuto** e **15 minuti**: restano 5m, 30m, 1h, 4h, 1d, 1w (poi tolta anche la settimana, vedi sopra). L'apertura di Londra e di New York c'è solo a 5 minuti. I vecchi segnali su 1m e 15m non si vedono né si contano più.
 - **20/11/2026** — Notifiche: se il servizio ntfy risponde "troppe richieste" (errore 429) l'app aspetta e riprova; i segnali favorevoli di un giro arrivano **in un solo messaggio**; tetto di 150 messaggi al giorno (i promemoria passano sempre); in Avvisi, "Notifiche sul telefono" mostra se il token è attivo e perché un invio fallisce.
 - **19/11/2026** — Solo target **2R, 3R e 4R**. Nei **Segnali automatici** ci sono oro, titoli e cripto insieme, con **filtri** e la tabella **"Dove sbagli"**. Scanner acceso su 108 strumenti. Pulsante **Azzera da adesso**. Riepilogo di oggi sotto il prezzo.
 - **18/11/2026** — Prezzo dell'oro quasi in tempo reale (circa 1 minuto di ritardo invece di 10). Nuove schede in Operazioni (E se…, Tu contro la regola, mappa giorno × ora, riepilogo fiscale). Quadro di mercato, sessioni dell'oro, reazione alla Fed. Spiegazioni "perché sì / perché no".
@@ -68,7 +70,7 @@ A cosa serve: vedere subito cosa fa lo strumento e cosa dice l'analisi.
 - **Opportunità:** controlla in un colpo solo tutti i gruppi (time frame e setup) con i target 2R, 3R e 4R, buy e short, e ti dice dove c'è un vantaggio adesso, dove sta per scattare e dove no. Se non c'è niente di favorevole lo dice.
 
 ### Scelte dell'analisi
-- **Time frame:** 5m, 30m, 1h, 4h, 1d, 1w (la durata di ogni barra).
+- **Time frame:** 5m, 30m, 1h, 4h, 1d (la durata di ogni barra).
 - **Setup:** **Breakout** (una barra chiude oltre il massimo o il minimo delle ultime 20 barre), oppure **Londra** / **New York** (rottura del range dei primi 15 minuti della sessione, solo a 5 minuti).
 - **Target:** 2R, 3R o 4R.
 - **BUY e SHORT:** per ciascuna direzione trovi ingresso, stop, target, il giudizio e se il segnale è già scattato o è in attesa.
@@ -199,7 +201,7 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 ### Cosa arriva
 - **Promemoria delle 7:00:** "Buongiorno - carica l'email di Vantage".
 - **30 minuti prima di una notizia rossa** (USD, EUR, GBP).
-- **Segnali favorevoli** su oro, titoli e cripto, con target 2R, 3R o 4R. Se nello stesso giro ce ne sono più di uno, arrivano **in un solo messaggio**.
+- **Segnali favorevoli** su oro, titoli e cripto, con target 2R, 3R o 4R. Il titolo ha sempre la forma **STRUMENTO-BUY/SELL-TIME FRAME-R** (per esempio `XAUUSD-SELL-5min-4R`), in grassetto su Telegram; nel testo trovi il setup, ingresso, stop e target. Se nello stesso giro ce ne sono più di uno, arrivano **in un solo messaggio**, con una riga in grassetto per ciascuno.
 - **Esiti** dei segnali già avvisati (target, stop).
 - **Riepilogo serale (dopo le 22):** un solo messaggio con i segnali favorevoli di oggi, quanti a target e stop, l'R totale e il time frame più debole e più forte (se ci sono almeno 3 chiusi). Si disattiva dalle scelte in Avvisi.
 - **Prova:** quando premi "Manda una notifica di prova".

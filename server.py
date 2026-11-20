@@ -60,7 +60,7 @@ def rrs_from(q):
     if not raw:
         return E.DEFAULT_RRS
     try:
-        return sorted({min(float(x), 20.0) for x in raw.split(",") if x.strip() and float(x) > 0})[:8] or E.DEFAULT_RRS
+        return sorted({float(x) for x in raw.split(",") if x.strip() and float(x) in E.DEFAULT_RRS}) or E.DEFAULT_RRS
     except ValueError:
         return E.DEFAULT_RRS
 
@@ -235,10 +235,12 @@ def api_setup(q):
     sym = q.get("symbol", ["XAUUSD"])[0]
     ys = E.yahoo_symbol(sym)
     tf = q.get("tf", ["1h"])[0]
-    if tf not in E.TF:
-        raise ValueError("time frame non valido")
+    if tf not in E.TF_ORDER:
+        raise ValueError("Time frame non disponibile: usa 5m, 30m, 1h, 4h o 1d.")
     setup = q.get("setup", ["breakout"])[0]
     rr = bounded(q, "rr", 2.0, 0.25, 20.0)
+    if rr not in E.DEFAULT_RRS:
+        raise ValueError("Target non disponibile: usa 2R, 3R o 4R.")
     rrs = sorted(set(rrs_from(q) + [rr]))
     now_u = E.now_utc()
     now_ts = E.epoch(now_u)
@@ -273,9 +275,11 @@ def api_setup(q):
 def api_signals(q):
     sym = q.get("symbol", ["XAUUSD"])[0]
     ys = E.yahoo_symbol(sym)
-    tfs = [t for t in q.get("tfs", ["5m,15m,1h"])[0].split(",") if t in E.TF][:8]
+    tfs = [t for t in q.get("tfs", ["5m,1h"])[0].split(",") if t in E.TF_ORDER][:8]
     setups = [s for s in q.get("setups", ["breakout"])[0].split(",") if s][:3]
     rr = bounded(q, "rr", 2.0, 0.25, 20.0)
+    if rr not in E.DEFAULT_RRS:
+        rr = 2.0
     now_u = E.now_utc()
     found, errors = [], []
     for setup in setups:

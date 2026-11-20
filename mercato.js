@@ -31,7 +31,7 @@
     const el = $("#daybrief"); if (!el) return;
     const now = Date.now() / 1000; let ar = {};
     try { ar = JSON.parse(localStorage.getItem("xau_archive_v1") || "{}"); } catch (e) { ar = {}; }
-    const fav = Object.values(ar).filter((x) => x.stance === "favorevole" && [2, 3, 4].includes(Number(x.rr)) && !["1m", "15m"].includes(x.tf) && x.entry_ts > now - 86400 && (typeof afterReset !== "function" || afterReset(x)));
+    const fav = Object.values(ar).filter((x) => x.stance === "favorevole" && [2, 3, 4].includes(Number(x.rr)) && ["5m", "30m", "1h", "4h", "1d"].includes(x.tf) && x.entry_ts > now - 86400 && (typeof afterReset !== "function" || afterReset(x)));
     const open = fav.filter((x) => x.status === "open"), parts = [];
     if (fav.length) parts.push(`segnali favorevoli nelle ultime 24 ore: <b>${fav.length}</b>${open.length ? " (" + open.length + " ancora aperti)" : ""}: ` + fav.slice(0, 4).map((x) => esc((x.symbol && x.symbol !== "XAUUSD" ? x.symbol : "Oro") + " " + (x.dir === "buy" ? "BUY" : "SHORT") + " " + x.tf)).join(", ") + (fav.length > 4 ? "…" : ""));
     else parts.push("nessun segnale favorevole nelle ultime 24 ore");
@@ -105,7 +105,7 @@
       <p class="small">${(() => { const k = Object.keys(NT.reminders || {}).pop(), today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" }); return k && k.endsWith(today) ? "Promemoria delle 7 di oggi: <b class=\"g\">inviato alle " + hm(NT.reminders[k]).slice(-5) + "</b>." : "Promemoria delle 7 di oggi: <b>non ancora inviato</b> (parte tra le 7:00 e le 10:00)."; })()}</p>
       ${ev || '<p class="muted small">Nessuna notifica registrata.</p>'}
       <div class="ctl-label" style="margin-top:10px">Avvisami sul telefono per questi time frame</div>
-      <div class="row gap" id="prefTf" style="flex-wrap:wrap">${["5m", "30m", "1h", "4h", "1d", "1w"].map((t) => `<label class="chk"><input type="checkbox" data-tf="${t}" ${(NT.prefs ? NT.prefs.tfs : []).includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
+      <div class="row gap" id="prefTf" style="flex-wrap:wrap">${["5m", "30m", "1h", "4h", "1d"].map((t) => `<label class="chk"><input type="checkbox" data-tf="${t}" ${(NT.prefs ? NT.prefs.tfs : []).includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
       <label class="chk"><input type="checkbox" id="prefEve" ${NT.prefs && NT.prefs.evening ? "checked" : ""}> Riepilogo serale (dopo le 22, un solo messaggio)</label>
       ${NT.pin_required ? '<label class="small">PIN <input id="prefPin" type="password" autocomplete="off" style="max-width:120px"></label>' : ""}
       <div class="row gap" style="margin-top:6px"><button class="btn" id="prefSave" type="button">Salva scelte</button></div><p class="small" id="prefMsg">${esc(prefMsg)}</p>
