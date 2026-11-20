@@ -629,7 +629,7 @@ def too_many(ip):
                 HITS.pop(k, None)
         return len(lst) > RATE_PER_MIN
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-        ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".png": "image/png", ".ico": "image/x-icon"}
+        ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".md": "text/markdown; charset=utf-8", ".png": "image/png", ".ico": "image/x-icon"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -704,6 +704,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         rel = "index.html" if u.path in ("/", "") else u.path.lstrip("/")
         full = os.path.normpath(os.path.join(WEB, rel))
+        if os.path.splitext(full)[1] == ".md" and os.path.basename(full) != "manuale.md":  # tra i file di testo si serve solo il manuale d'uso
+            self._send(404, b"Non trovato", "text/plain; charset=utf-8")
+            return
         if not full.startswith(WEB) or not os.path.isfile(full) or os.path.splitext(full)[1] not in MIME:
             self._send(404, b"Non trovato", "text/plain; charset=utf-8")
             return

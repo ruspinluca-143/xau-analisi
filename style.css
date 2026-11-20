@@ -275,3 +275,22 @@ canvas.cv{cursor:pointer}
 .autofilter label{display:flex;flex-direction:column;gap:4px;color:var(--muted)}
 .autofilter select{width:100%}
 .card[hidden]{display:none!important}
+
+/* manuale d'uso */
+#manSearch{width:100%;margin:6px 0 10px}
+.man details{border:1px solid var(--line);border-radius:14px;margin:8px 0;padding:4px 12px;background:rgba(255,255,255,.03)}
+.man summary{cursor:pointer;font-weight:700;padding:8px 0;list-style:none}
+.man summary::-webkit-details-marker{display:none}
+.man summary::before{content:"▸ ";color:var(--muted)}
+.man details[open]>summary::before{content:"▾ "}
+.man h4{margin:12px 0 4px;font-size:14px}
+.man p{margin:6px 0;line-height:1.5;font-size:14px}
+.man ul{margin:6px 0 6px 18px;padding:0;line-height:1.5;font-size:14px}
+.man li{margin:3px 0}
+.man ul ul{margin-top:2px}
+.man code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:6px;font-size:12.5px}
+#manSearch{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit}
+/* "Dove sbagli": i pulsanti delle categorie vanno a capo invece di sbordare dal riquadro */
+#afDim{display:flex;flex-wrap:wrap;gap:4px;max-width:100%;overflow:visible}
+#afDim button{flex:1 1 auto}
+.seg.small{max-width:100%}

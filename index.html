@@ -23,6 +23,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="symbol" value="XAUUSD" placeholder="Cerca strumento" spellcheck="false" autocomplete="off">
   </label>
+  <button id="manualBtn" class="round" title="Manuale d'uso" aria-label="Manuale d'uso" style="font-weight:800">?</button>
   <button id="refresh" class="round" title="Aggiorna ora" aria-label="Aggiorna ora"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
 </header>
 
@@ -231,6 +232,13 @@
   <button data-tab="avvisi"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>Avvisi</button>
   <button data-tab="op"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Operazioni</button>
 </nav>
+<div class="sheet" id="manSheet" hidden role="dialog" aria-modal="true" aria-label="Manuale d'uso">
+  <div class="sheet-card" style="max-height:90vh;overflow:auto">
+    <div class="sheet-head"><h3>Manuale d'uso</h3><button class="round" id="manClose" title="Chiudi" aria-label="Chiudi il manuale">✕</button></div>
+    <input id="manSearch" type="search" placeholder="Cerca nel manuale (es. notifiche, filtri, tasse)" aria-label="Cerca nel manuale" autocomplete="off">
+    <div id="manBody" class="man"></div>
+  </div>
+</div>
 <div class="sheet" id="oppSheet" hidden>
   <div class="sheet-card">
     <div class="sheet-head"><h3>Opportunità</h3><button class="round" id="oppClose" title="Chiudi">✕</button></div>
@@ -246,6 +254,7 @@
 <script src="calendar.js"></script>
 <script src="segnali.js"></script>
 <script src="suggest.js"></script>
+<script src="guida.js"></script>
 <script src="analisi.js"></script>
 <script src="mercato.js"></script>
 </body>
