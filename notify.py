@@ -337,7 +337,7 @@ DAILY_MAX = int(os.environ.get("NTFY_DAILY_MAX", "150"))  # il servizio gratuito
 
 
 def send(title, body, tags, essential=False):
-    """Invia su ntfy e, se non riesce (o in più, se è l'unico collegato), su Telegram. Riesce se almeno un canale accetta il messaggio."""
+    """Invia su Telegram se è collegato (unico canale); solo se Telegram non è impostato usa ntfy. Riesce se il canale accetta il messaggio."""
     day = time.strftime("%Y-%m-%d", time.gmtime())
     if BUDGET["day"] != day:
         BUDGET["day"], BUDGET["n"] = day, 0
@@ -345,7 +345,7 @@ def send(title, body, tags, essential=False):
         raise RuntimeError("limite giornaliero di %d messaggi raggiunto: gli altri avvisi restano nell'elenco dell'app" % DAILY_MAX)
     err = None
     ok = False
-    if TOPIC:
+    if TOPIC and not telegram_on():  # con Telegram collegato ntfy NON si usa più (scelta di Luca, 24/11/2026): ntfy resta solo se Telegram non è impostato
         wait = _ntfy_wait()
         if wait:
             err = RuntimeError("ntfy in pausa per altri %d minuti dopo un errore del servizio" % (wait // 60 + 1))  # non si registra: non è un nuovo tentativo

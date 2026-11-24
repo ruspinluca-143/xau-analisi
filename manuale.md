@@ -4,6 +4,7 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **24/11/2026** — **Le notifiche arrivano solo su Telegram**: ntfy non si usa più (se Telegram è collegato, il server non prova nemmeno ntfy). Nessuna attesa e niente più errori di ntfy.
 - **24/11/2026** — **Avvisi solo oltre il 30% di probabilità di target**: sul telefono ti arriva un segnale solo se, nella simulazione, il target arriva prima dello stop in più del 30% dei casi. Lo cambi in Avvisi, "Notifiche sul telefono" (0 = tutti). I segnali sotto soglia restano nell'elenco dei Segnali automatici, senza avviso.
 - **23/11/2026** — **Restano solo i time frame 30 minuti, 1 ora, 4 ore e giornaliero** (tolto anche il 5 minuti, che nei dati era il più debole: 71 segnali, 8% di target). Con il 5 minuti sono sparite anche le aperture di **Londra** e **New York**, che esistevano solo a 5 minuti: resta il **Breakout**. I segnali vecchi su 5 minuti non si vedono né si contano più e non mandano più avvisi.
 - **20/11/2026** — **Notifiche con il nome nel formato STRUMENTO-BUY/SELL-TIME FRAME-R**, per esempio `XAUUSD-SELL-5min-4R` o `TSLA-BUY-1h-3R`, **in grassetto su Telegram** (su ntfy il titolo è già in evidenza). Gli esiti e i riepiloghi usano lo stesso nome.
@@ -110,7 +111,7 @@ A cosa serve: farti arrivare i segnali e capire come stanno andando.
 
 ### Avvisi (nell'app)
 - **Attiva avvisi:** con l'app aperta, suono e notifica del browser quando compare un segnale. Scegli i time frame, il tipo di segnale e se avvisare solo i favorevoli. **Prova suono** controlla l'audio.
-- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate, se il **token ntfy** è attivo, quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "429 troppe richieste"). Qui scegli anche **per quali time frame ricevere la notifica** (i segnali degli altri restano nell'elenco ma non ti avvisano), la **soglia di probabilità di target** (di partenza 30%: ti avvisa solo se la simulazione dà il target prima dello stop in più del 30% dei casi; 0 = tutti) e se vuoi il **riepilogo serale**; premi **Salva scelte**.
+- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate (il canale è **Telegram**), quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "Telegram HTTP 400"). Qui scegli anche **per quali time frame ricevere la notifica** (i segnali degli altri restano nell'elenco ma non ti avvisano), la **soglia di probabilità di target** (di partenza 30%: ti avvisa solo se la simulazione dà il target prima dello stop in più del 30% dei casi; 0 = tutti) e se vuoi il **riepilogo serale**; premi **Salva scelte**.
 
 ### Notizie importanti in arrivo
 - Solo gli eventi "rossi" (impatto alto) di USD, EUR, GBP: tassi, inflazione, lavoro USA, discorsi delle banche centrali. Orari in ora italiana. **Toccando un evento** vedi gli scenari: cosa tende a fare l'oro se il dato è sopra, in linea o sotto le attese. Sono regole generali, non percentuali né previsioni.
@@ -198,7 +199,7 @@ A cosa serve: caricare le tue operazioni di MetaTrader 5, vedere come stai andan
 
 ## 9. Notifiche sul telefono
 
-A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuita **ntfy**.
+A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie a un bot di **Telegram** (gratuito, senza limiti di quota).
 
 ### Cosa arriva
 - **Promemoria delle 7:00:** "Buongiorno - carica l'email di Vantage".
@@ -209,15 +210,15 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 - **Prova:** quando premi "Manda una notifica di prova".
 
 ### Come si collega
-- Installa **ntfy** sul telefono, iscriviti al canale segreto (lo stesso nome impostato sul server) e consenti le notifiche dell'app, senza risparmio batteria.
+- Telegram: apri la chat con il tuo bot (**luluinvesting_bot**), tocca **Avvia** e consenti le notifiche di Telegram, senza risparmio batteria e senza Focus attivo. Il server conosce il bot e la tua chat tramite due variabili (vedi la guida di gestione).
 
 ### Se non arriva nulla
-1. In Avvisi apri "Notifiche sul telefono": se un invio risulta **inviato**, il problema è sul telefono (canale giusto? notifiche e batteria dell'app ntfy).
-2. Se risulta **non inviato**, leggi il motivo. Con "429 troppe richieste" il servizio gratuito ha esaurito la quota: serve il token ntfy (vedi la guida di gestione).
+1. In Avvisi apri "Notifiche sul telefono": se un invio risulta **inviato**, il problema è sul telefono (notifiche del bot attive in Telegram? Focus? risparmio batteria?).
+2. Se risulta **non inviato**, leggi il motivo: di solito è un problema del token o della chat di Telegram (vedi la guida di gestione).
 3. Premi **Manda una notifica di prova**.
 
-### Telegram (secondo canale, facoltativo)
-- Se il servizio ntfy non risponde (succede: a volte il server non lo raggiunge), gli avvisi possono arrivare su **Telegram**: un bot privato ti scrive gli stessi messaggi. Si attiva con due variabili sul server (vedi la guida di gestione). In Avvisi, "Notifiche sul telefono" mostra "Telegram: attivo" e i messaggi inviati così hanno "(via Telegram)" nel titolo.
+### Telegram (l'unico canale)
+- Da 24/11/2026 gli avvisi arrivano **solo su Telegram**: un bot privato ti scrive i messaggi. ntfy non si usa più. In Avvisi, "Notifiche sul telefono" mostra "Canale delle notifiche: Telegram" e i messaggi inviati hanno "(via Telegram)" nel titolo.
 
 ### Limiti
 - Il servizio gratuito ferma a 250 messaggi al giorno per indirizzo; l'app ne manda al massimo 150 al giorno (i promemoria passano sempre).
