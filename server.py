@@ -214,7 +214,7 @@ def api_overview(q):
     info = E.price_info(ys, now_ts, spot)
     m = E.mtf(ys, now_ts)
     return {"symbol": sym.upper(), "ysym": ys, "name": E.pretty_name(ys), "gold": E.is_gold(ys), "info": info, "mtf": m,
-            "reading": E.mtf_reading(m), "tfs": E.TF_ORDER, "sessions": {k: v["label"] for k, v in E.sessions_for(ys).items()},
+            "reading": E.mtf_reading(m), "tfs": E.TF_ORDER, "sessions": {},  # niente aperture di Londra/New York (esistevano solo a 5 minuti)
             "now_ts": now_ts}
 
 
@@ -236,8 +236,10 @@ def api_setup(q):
     ys = E.yahoo_symbol(sym)
     tf = q.get("tf", ["1h"])[0]
     if tf not in E.TF_ORDER:
-        raise ValueError("Time frame non disponibile: usa 5m, 30m, 1h, 4h o 1d.")
+        raise ValueError("Time frame non disponibile: usa 30m, 1h, 4h o 1d.")
     setup = q.get("setup", ["breakout"])[0]
+    if setup != "breakout":
+        raise ValueError("Le aperture di Londra e New York non sono più disponibili: resta il Breakout.")
     rr = bounded(q, "rr", 2.0, 0.25, 20.0)
     if rr not in E.DEFAULT_RRS:
         raise ValueError("Target non disponibile: usa 2R, 3R o 4R.")
@@ -275,7 +277,7 @@ def api_setup(q):
 def api_signals(q):
     sym = q.get("symbol", ["XAUUSD"])[0]
     ys = E.yahoo_symbol(sym)
-    tfs = [t for t in q.get("tfs", ["5m,1h"])[0].split(",") if t in E.TF_ORDER][:8]
+    tfs = [t for t in q.get("tfs", ["1h"])[0].split(",") if t in E.TF_ORDER][:8]
     setups = [s for s in q.get("setups", ["breakout"])[0].split(",") if s][:3]
     rr = bounded(q, "rr", 2.0, 0.25, 20.0)
     if rr not in E.DEFAULT_RRS:

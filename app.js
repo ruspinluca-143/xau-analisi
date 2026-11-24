@@ -1,7 +1,7 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const TFS = ["5m", "30m", "1h", "4h", "1d"]; // solo questi time frame: niente 1m, 15m, 1w
+const TFS = ["30m", "1h", "4h", "1d"]; // solo questi time frame: niente 1m, 5m, 15m, 1w
 const TF_OK = (x) => TFS.includes(x.tf); // i segnali già registrati su altri time frame non si mostrano né si contano
 const RRS = [2, 3, 4]; // solo target 2R, 3R e 4R
 const RR_OK = (x) => [2, 3, 4].includes(Number(x.rr)); // i segnali già registrati con altri target non si mostrano né si contano
@@ -88,12 +88,12 @@ function seg(el, items, current, onPick) {
     el.appendChild(b);
   });
 }
-function buildTf() { seg($("#tfSeg"), TFS.map((t) => ({ label: t, value: t })), S.tf, (v) => { S.tf = v; if (S.setup !== "breakout" && !["5m"].includes(v)) S.setup = "breakout"; buildTf(); buildSetupSeg(); load(); }); }
+function buildTf() { seg($("#tfSeg"), TFS.map((t) => ({ label: t, value: t })), S.tf, (v) => { S.tf = v; S.setup = "breakout"; buildTf(); buildSetupSeg(); load(); }); }
 function buildSetupSeg() {
   const items = [{ label: "Breakout", value: "breakout" }];
-  const ses = (S.ov && S.ov.sessions) || { london: "Londra", ny: "New York" };
+  const ses = (S.ov && S.ov.sessions) || {};
   Object.entries(ses).forEach(([k, l]) => items.push({ label: l.replace(" (Borsa)", ""), value: k }));
-  seg($("#setupSeg"), items, S.setup, (v) => { S.setup = v; if (v !== "breakout" && !["5m"].includes(S.tf)) { S.tf = "5m"; buildTf(); } buildSetupSeg(); load(); });
+  seg($("#setupSeg"), items, S.setup, (v) => { S.setup = v; buildSetupSeg(); load(); });
 }
 function buildRr() { seg($("#rrSeg"), RRS.map((r) => ({ label: r + "R", value: r })), S.rr, (v) => { S.rr = v; buildRr(); load(true); }); }
 function buildAxisSegs() {
@@ -493,16 +493,16 @@ function renderTm() {
 }
 
 /* ---------- avvisi ---------- */
-const AL = Object.assign({ on: false, tfs: ["5m", "1h"], setups: ["breakout"], stance: "fav" }, JSON.parse(localStorage.getItem("xau_alerts") || "{}"));
+const AL = Object.assign({ on: false, tfs: ["1h"], setups: ["breakout"], stance: "fav" }, JSON.parse(localStorage.getItem("xau_alerts") || "{}"));
 AL.tfs = (AL.tfs || []).filter((t) => TFS.includes(t)); // scelte vecchie salvate sul telefono (1m, 15m, 1w) non contano più
-if (!AL.tfs.length) AL.tfs = ["5m", "1h"];
+if (!AL.tfs.length) AL.tfs = ["1h"];
 const seen = new Set(JSON.parse(localStorage.getItem("xau_seen") || "[]"));
 let alTimer = null, audioCtx = null;
 function saveAl() { localStorage.setItem("xau_alerts", JSON.stringify(AL)); localStorage.setItem("xau_seen", JSON.stringify([...seen].slice(-300))); }
 function buildAlertUi() {
   const mk = (id, vals, sel, cb) => { $(id).innerHTML = vals.map(([v, l]) => `<label class="chip"><input type="checkbox" value="${v}" ${sel.includes(v) ? "checked" : ""}><span>${l}</span></label>`).join(""); $$(id + " input").forEach((i) => (i.onchange = () => { cb($$(id + " input:checked").map((x) => x.value)); saveAl(); })); };
-  mk("#alTf", [["5m", "5 min"], ["30m", "30 min"], ["1h", "1 ora"], ["4h", "4 ore"]], AL.tfs, (v) => (AL.tfs = v));
-  const ses = (S.ov && S.ov.sessions) || { london: "Londra", ny: "New York" };
+  mk("#alTf", [["30m", "30 min"], ["1h", "1 ora"], ["4h", "4 ore"], ["1d", "1 giorno"]], AL.tfs, (v) => (AL.tfs = v));
+  const ses = (S.ov && S.ov.sessions) || {};
   mk("#alSetup", [["breakout", "Breakout"], ...Object.entries(ses).map(([k, l]) => [k, "Apertura " + l.replace(" (Borsa)", "")])], AL.setups, (v) => (AL.setups = v));
   $$("input[name=alStance]").forEach((i) => { i.checked = i.value === AL.stance; i.onchange = () => { AL.stance = i.value; saveAl(); }; });
   $("#alToggle").textContent = AL.on ? "Disattiva avvisi" : "Attiva avvisi";
@@ -597,7 +597,7 @@ load().then(() => { buildAlertUi(); schedulePoll(false); });
 setInterval(() => { if (!document.hidden) load(true, true); }, 30000);
 
 /* ---------- Opportunità: scansione di tutti i time frame, setup e target ---------- */
-const OPP_TFS = ["5m", "30m", "1h", "4h", "1d"];
+const OPP_TFS = ["30m", "1h", "4h", "1d"];
 let oppRunning = false;
 function closeOpp() { $("#oppSheet").hidden = true; document.body.style.overflow = ""; }
 function applyOpp(c) {
@@ -668,9 +668,8 @@ async function openOpp() {
   $("#oppSheet").hidden = false; document.body.style.overflow = "hidden";
   if (oppRunning) return;
   oppRunning = true;
-  const sess = Object.keys((S.ov && S.ov.sessions) || { london: 1, ny: 1 }), combos = [];
+  const combos = [];
   OPP_TFS.forEach((tf) => combos.push({ setup: "breakout", tf }));
-  sess.forEach((k) => ["5m"].forEach((tf) => combos.push({ setup: k, tf })));
   $("#oppBody").innerHTML = ""; $("#oppProg").style.width = "3%"; $("#oppSub").textContent = "Analizzo tutti i time frame, i setup e i target… 3%";
   const results = []; let done = 0, next = 0;
   const worker = async () => {

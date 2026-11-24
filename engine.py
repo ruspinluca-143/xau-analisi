@@ -36,9 +36,9 @@ TF = {
     "1d": ("1d", "2y", 86400),
     "1w": ("1wk", "5y", 604800),
 }
-TF_ORDER = ["5m", "30m", "1h", "4h", "1d"]  # solo questi time frame (scelta di Luca, 20/11/2026): niente 1m, 15m, 1w
+TF_ORDER = ["30m", "1h", "4h", "1d"]  # solo questi time frame (scelta di Luca, 23/11/2026): niente 1m, 5m, 15m, 1w
 IN_SCOPE = lambda x: x.get("tf") in TF_ORDER and x.get("rr") in DEFAULT_RRS  # un segnale conta (si mostra, si conta, si notifica) solo con time frame e target scelti
-SHORT_TF = ("5m", "30m", "1h")
+SHORT_TF = ("30m", "1h")
 LONG_TF = ("4h", "1d", "1w")
 O, H, L, C = 1, 2, 3, 4  # indici nelle barre (ts, o, h, l, c)
 

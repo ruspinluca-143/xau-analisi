@@ -4,6 +4,7 @@ Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorn
 
 ## Novità (ultime modifiche)
 
+- **23/11/2026** — **Restano solo i time frame 30 minuti, 1 ora, 4 ore e giornaliero** (tolto anche il 5 minuti, che nei dati era il più debole: 71 segnali, 8% di target). Con il 5 minuti sono sparite anche le aperture di **Londra** e **New York**, che esistevano solo a 5 minuti: resta il **Breakout**. I segnali vecchi su 5 minuti non si vedono né si contano più e non mandano più avvisi.
 - **20/11/2026** — **Notifiche con il nome nel formato STRUMENTO-BUY/SELL-TIME FRAME-R**, per esempio `XAUUSD-SELL-5min-4R` o `TSLA-BUY-1h-3R`, **in grassetto su Telegram** (su ntfy il titolo è già in evidenza). Gli esiti e i riepiloghi usano lo stesso nome.
 - **20/11/2026** — **Solo target 2R, 3R, 4R e solo time frame 5m, 30m, 1h, 4h, 1d** (tolti anche la settimana, 1m, 15m e i target 1R, 1,5R, 5R). Il server rifiuta le richieste fuori da questo elenco; i segnali vecchi fuori elenco non si mostrano, non si contano e **non mandano più nemmeno l'avviso dell'esito** (prima potevano ancora arrivare avvisi con target 1R).
 - **20/11/2026** — Con **Telegram** collegato, se ntfy non risponde il server lo riprova solo ogni 30 minuti (gli avvisi partono subito su Telegram, senza attese). Quando ntfy tornerà libero lo riprende da solo.
@@ -67,11 +68,11 @@ A cosa serve: vedere subito cosa fa lo strumento e cosa dice l'analisi.
 
 ### Pulsanti rapidi
 - **Grafico, Time Machine, Avvisi:** portano alle rispettive schermate.
-- **Opportunità:** controlla in un colpo solo tutti i gruppi (time frame e setup) con i target 2R, 3R e 4R, buy e short, e ti dice dove c'è un vantaggio adesso, dove sta per scattare e dove no. Se non c'è niente di favorevole lo dice.
+- **Opportunità:** controlla in un colpo solo tutti i gruppi (time frame e setup) con i target 2R, 3R e 4R, buy e short, su tutti i time frame, e ti dice dove c'è un vantaggio adesso, dove sta per scattare e dove no. Se non c'è niente di favorevole lo dice.
 
 ### Scelte dell'analisi
-- **Time frame:** 5m, 30m, 1h, 4h, 1d (la durata di ogni barra).
-- **Setup:** **Breakout** (una barra chiude oltre il massimo o il minimo delle ultime 20 barre), oppure **Londra** / **New York** (rottura del range dei primi 15 minuti della sessione, solo a 5 minuti).
+- **Time frame:** 30m, 1h, 4h, 1d (la durata di ogni barra).
+- **Setup:** **Breakout** (una barra chiude oltre il massimo o il minimo delle ultime 20 barre). Le aperture di Londra e New York non ci sono più.
 - **Target:** 2R, 3R o 4R.
 - **BUY e SHORT:** per ciascuna direzione trovi ingresso, stop, target, il giudizio e se il segnale è già scattato o è in attesa.
 
@@ -245,4 +246,4 @@ A cosa serve: ricevere avvisi **anche con l'app chiusa**, grazie all'app gratuit
 - **R:** multiplo del rischio; 1R è la distanza dallo stop.
 - **RSI:** indicatore di forza del movimento; sopra 70 il prezzo è molto salito, sotto 30 molto sceso.
 - **Swap:** costo o ricavo per tenere aperta una posizione di notte.
-- **Time frame:** durata di ogni candela (5 minuti, 1 ora, 1 giorno...).
+- **Time frame:** durata di ogni candela (30 minuti, 1 ora, 1 giorno...).

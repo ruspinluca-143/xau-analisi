@@ -1,8 +1,7 @@
 """Controllo automatico dei segnali, registro e notifiche (ntfy). SOLO ANALISI: nessun ordine.
 
 Pensato per girare da solo ogni 5 minuti su GitHub Actions (vedi .github/workflows/avvisi.yml):
-  1. cerca i segnali appena scattati su tutti i time frame utili (breakout 5m 15m 1h 4h 1d 1w + aperture Londra e
-     New York a 5m e 15m), buy e short, con i target 2R, 3R e 4R;
+  1. cerca i segnali appena scattati su tutti i time frame utili (breakout 30m 1h 4h 1d), buy e short, con i target 2R, 3R e 4R;
   2. li REGISTRA tutti in log.json (anche quelli non favorevoli, col loro giudizio) per poterli confrontare;
   3. avvisa sul telefono SOLO quelli favorevoli (simulazione e storico concordano, almeno 10 casi);
   4. segue ogni segnale fino all'esito (target, stop o chiuso) e, per quelli avvisati, manda una seconda
@@ -37,8 +36,8 @@ LOG_FILE = os.environ.get("LOG_FILE", os.path.join(DATA_DIR, "log.json"))
 DRY = "--dry" in sys.argv
 TEST = "--test" in sys.argv
 HOLD = {"1m": 60, "5m": 36, "15m": 24, "30m": 24, "1h": 24, "4h": 18, "1d": 10, "1w": 8}
-BREAKOUT_TFS = ("5m", "30m", "1h", "4h", "1d")  # solo questi (niente 1m, 15m, 1w)
-SESSION_TFS = ("5m",)
+BREAKOUT_TFS = ("30m", "1h", "4h", "1d")  # solo questi (niente 1m, 5m, 15m, 1w)
+SESSION_TFS = ()  # le aperture di Londra e New York esistevano solo a 5 minuti: tolte insieme al 5m
 REPLAYS = 3000
 KEEP_DAYS = 90
 

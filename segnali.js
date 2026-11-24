@@ -12,8 +12,8 @@
   const KINDN = { oro: "Oro", titoli: "Titoli", cripto: "Cripto" };
   const SETUPN = { breakout: "Breakout", london: "Apertura Londra", ny: "Apertura New York" };
   const DIMS = {
-    tf: { label: "Time frame", get: (x) => x.tf, order: ["5m", "30m", "1h", "4h", "1d"] },
-    setup: { label: "Setup", get: (x) => SETUPN[x.setup] || x.setup, order: ["Breakout", "Apertura Londra", "Apertura New York"] },
+    tf: { label: "Time frame", get: (x) => x.tf, order: ["30m", "1h", "4h", "1d"] },
+    setup: { label: "Setup", get: (x) => SETUPN[x.setup] || x.setup, order: ["Breakout"] },
     dir: { label: "Direzione", get: (x) => (x.dir === "buy" ? "BUY" : "SHORT"), order: ["BUY", "SHORT"] },
     rr: { label: "Target", get: (x) => x.rr + "R", order: ["2R", "3R", "4R"] },
     hour: { label: "Ora", get: (x) => String(hourOf(x)).padStart(2, "0") + ":00", order: null },
@@ -31,7 +31,7 @@
   const opt = (v, t) => `<option value="${v}">${t}</option>`;
   box.innerHTML = `<label class="small">Strumento<select data-f="kind">${opt("", "Tutti")}${opt("oro", "Oro")}${opt("titoli", "Titoli")}${opt("cripto", "Cripto")}</select></label>
     <label class="small">Time frame<select data-f="tf">${opt("", "Tutti")}${DIMS.tf.order.map((v) => opt(v, v)).join("")}</select></label>
-    <label class="small">Setup<select data-f="setup">${opt("", "Tutti")}${opt("breakout", "Breakout")}${opt("london", "Apertura Londra")}${opt("ny", "Apertura New York")}</select></label>
+    <label class="small">Setup<select data-f="setup">${opt("", "Tutti")}${opt("breakout", "Breakout")}</select></label>
     <label class="small">Direzione<select data-f="dir">${opt("", "Tutte")}${opt("buy", "BUY")}${opt("sell", "SHORT")}</select></label>
     <label class="small">Target<select data-f="rr">${opt("", "Tutti")}${opt("2", "2R")}${opt("3", "3R")}${opt("4", "4R")}</select></label>
     <label class="small">Esito<select data-f="res">${opt("", "Tutti")}${opt("chiusi", "Chiusi")}${opt("target", "Solo target")}${opt("stop", "Solo stop")}${opt("none", "Senza esito netto")}${opt("open", "Aperti")}</select></label>
