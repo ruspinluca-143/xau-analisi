@@ -600,7 +600,15 @@ def api_prefs(body):
     tfs = body.get("tfs")
     if not isinstance(tfs, list) or any(t not in E.TF_ORDER for t in tfs):
         raise ValueError("Time frame non validi.")
-    return {"ok": True, "prefs": N.save_prefs(tfs, body.get("evening", True))}
+    mt = body.get("min_target")
+    if mt is not None:
+        try:
+            mt = float(str(mt).replace(",", "."))
+        except ValueError:
+            raise ValueError("La soglia deve essere un numero (per esempio 30).")
+        if not 0 <= mt <= 95:
+            raise ValueError("La soglia deve stare tra 0 e 95.")
+    return {"ok": True, "prefs": N.save_prefs(tfs, body.get("evening", True), mt)}
 
 
 def api_notiftest(body):

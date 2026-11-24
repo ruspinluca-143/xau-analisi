@@ -106,6 +106,7 @@
       ${ev || '<p class="muted small">Nessuna notifica registrata.</p>'}
       <div class="ctl-label" style="margin-top:10px">Avvisami sul telefono per questi time frame</div>
       <div class="row gap" id="prefTf" style="flex-wrap:wrap">${["30m", "1h", "4h", "1d"].map((t) => `<label class="chk"><input type="checkbox" data-tf="${t}" ${(NT.prefs ? NT.prefs.tfs : []).includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div>
+      <label class="small" style="display:block;margin:8px 0">Avvisami solo se la probabilità di target nella simulazione supera <input id="prefMin" type="text" inputmode="decimal" autocomplete="off" value="${NT.prefs && NT.prefs.min_target != null ? NT.prefs.min_target : 30}" style="max-width:64px"> % (0 = tutti i segnali)</label>
       <label class="chk"><input type="checkbox" id="prefEve" ${NT.prefs && NT.prefs.evening ? "checked" : ""}> Riepilogo serale (dopo le 22, un solo messaggio)</label>
       ${NT.pin_required ? '<label class="small">PIN <input id="prefPin" type="password" autocomplete="off" style="max-width:120px"></label>' : ""}
       <div class="row gap" style="margin-top:6px"><button class="btn" id="prefSave" type="button">Salva scelte</button></div><p class="small" id="prefMsg">${esc(prefMsg)}</p>
@@ -114,11 +115,11 @@
       <p class="muted small">"Inviata" vuol dire che il servizio l'ha accettata: se sul telefono non compare, controlla nell'app ntfy che sia iscritto allo stesso canale e che le notifiche e il risparmio batteria non la blocchino. L'elenco è salvato anche su GitHub (se il token è attivo), quindi resta dopo i riavvii.</p>`;
     const sv = $("#prefSave"); if (sv) sv.onclick = async () => {
       const tfs = [...document.querySelectorAll("#prefTf input:checked")].map((i) => i.dataset.tf), pin = $("#prefPin") ? $("#prefPin").value : "";
-      try { const r = await post("/api/prefs", { tfs, evening: $("#prefEve").checked, pin }); NT.prefs = r.prefs; prefMsg = "Salvato: avvisi per " + (r.prefs.tfs.join(", ") || "nessun time frame") + (r.prefs.evening ? ", con riepilogo serale." : ", senza riepilogo serale."); }
+      try { const r = await post("/api/prefs", { tfs, evening: $("#prefEve").checked, min_target: $("#prefMin").value, pin }); NT.prefs = r.prefs; prefMsg = "Salvato: avvisi per " + (r.prefs.tfs.join(", ") || "nessun time frame") + ", solo con probabilità di target oltre " + r.prefs.min_target + "%" + (r.prefs.evening ? ", con riepilogo serale." : ", senza riepilogo serale."); }
       catch (e) { prefMsg = e.message; }
       prefDirty = false; ntfyBox();
     };
-    document.querySelectorAll("#prefTf input, #prefEve").forEach((i) => (i.onchange = () => { prefDirty = true; }));
+    document.querySelectorAll("#prefTf input, #prefEve, #prefMin").forEach((i) => { i.onchange = i.oninput = () => { prefDirty = true; }; });
     const b = $("#ntfyTest"); if (b) b.onclick = async () => { b.disabled = true; try { await post("/api/notiftest", {}); ntMsg = "Prova inviata alle " + hm(Date.now() / 1000) + ": controlla il telefono."; } catch (e) { ntMsg = e.message; } await loadNtfy(); };
   }
   const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }), j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error || "errore"); return j; };

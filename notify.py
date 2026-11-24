@@ -429,8 +429,9 @@ def flush(items, now_ts, can_send):
     sent, changed = 0, False
     if not can_send or cooling():
         return sent, changed
+    P = prefs()
     pend = [it for it in items if it.get("stance") == "favorevole" and not it.get("notified") and not it.get("symbol") and it.get("status") == "open"
-            and it.get("rr") in E.DEFAULT_RRS and it.get("tf") in prefs()["tfs"] and now_ts - it["entry_ts"] < 6 * 3600]
+            and it.get("rr") in E.DEFAULT_RRS and it.get("tf") in P["tfs"] and (it.get("sim_target") or 0) * 100 > P["min_target"] and now_ts - it["entry_ts"] < 6 * 3600]
     if pend:
         try:
             for c in pend:
@@ -480,20 +481,23 @@ PREFS_FILE = os.path.join(os.path.dirname(LOG_FILE) or ".", "prefs.json")
 def prefs():
     """Scelte di Luca per le notifiche: su quali time frame avvisare e se mandare il riepilogo serale (predefinito: tutti i time frame, riepilogo sì)."""
     PS.restore(PREFS_FILE, "prefs.json")
-    d = {"tfs": list(E.TF_ORDER), "evening": True}
+    d = {"tfs": list(E.TF_ORDER), "evening": True, "min_target": 30.0}
     try:
         with open(PREFS_FILE, encoding="utf-8") as fh:
             x = json.load(fh)
         if isinstance(x.get("tfs"), list):
             d["tfs"] = [t for t in x["tfs"] if t in E.TF_ORDER]
         d["evening"] = bool(x.get("evening", True))
+        if isinstance(x.get("min_target"), (int, float)):
+            d["min_target"] = max(0.0, min(95.0, float(x["min_target"])))
     except (OSError, ValueError, AttributeError):
         pass
     return d
 
 
-def save_prefs(tfs, evening):
-    d = {"tfs": [t for t in E.TF_ORDER if t in (tfs or [])], "evening": bool(evening)}
+def save_prefs(tfs, evening, min_target=None):
+    d = {"tfs": [t for t in E.TF_ORDER if t in (tfs or [])], "evening": bool(evening),
+         "min_target": max(0.0, min(95.0, float(prefs()["min_target"] if min_target is None else min_target)))}
     with open(PREFS_FILE, "w", encoding="utf-8") as fh:
         json.dump(d, fh)
     PS.push(PREFS_FILE, "prefs.json", min_gap=0)

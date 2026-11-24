@@ -1,9 +1,10 @@
 # Manuale d'uso — XAU Analisi
 
-Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorna a ogni modifica: la sezione "Novità" in alto dice cosa è cambiato e quando. Ultimo aggiornamento: 20/11/2026.
+Questo manuale spiega come si usa ogni parte dell'app e a cosa serve. Si aggiorna a ogni modifica: la sezione "Novità" in alto dice cosa è cambiato e quando. Ultimo aggiornamento: 24/11/2026.
 
 ## Novità (ultime modifiche)
 
+- **24/11/2026** — **Avvisi solo oltre il 30% di probabilità di target**: sul telefono ti arriva un segnale solo se, nella simulazione, il target arriva prima dello stop in più del 30% dei casi. Lo cambi in Avvisi, "Notifiche sul telefono" (0 = tutti). I segnali sotto soglia restano nell'elenco dei Segnali automatici, senza avviso.
 - **23/11/2026** — **Restano solo i time frame 30 minuti, 1 ora, 4 ore e giornaliero** (tolto anche il 5 minuti, che nei dati era il più debole: 71 segnali, 8% di target). Con il 5 minuti sono sparite anche le aperture di **Londra** e **New York**, che esistevano solo a 5 minuti: resta il **Breakout**. I segnali vecchi su 5 minuti non si vedono né si contano più e non mandano più avvisi.
 - **20/11/2026** — **Notifiche con il nome nel formato STRUMENTO-BUY/SELL-TIME FRAME-R**, per esempio `XAUUSD-SELL-5min-4R` o `TSLA-BUY-1h-3R`, **in grassetto su Telegram** (su ntfy il titolo è già in evidenza). Gli esiti e i riepiloghi usano lo stesso nome.
 - **20/11/2026** — **Solo target 2R, 3R, 4R e solo time frame 5m, 30m, 1h, 4h, 1d** (tolti anche la settimana, 1m, 15m e i target 1R, 1,5R, 5R). Il server rifiuta le richieste fuori da questo elenco; i segnali vecchi fuori elenco non si mostrano, non si contano e **non mandano più nemmeno l'avviso dell'esito** (prima potevano ancora arrivare avvisi con target 1R).
@@ -109,7 +110,7 @@ A cosa serve: farti arrivare i segnali e capire come stanno andando.
 
 ### Avvisi (nell'app)
 - **Attiva avvisi:** con l'app aperta, suono e notifica del browser quando compare un segnale. Scegli i time frame, il tipo di segnale e se avvisare solo i favorevoli. **Prova suono** controlla l'audio.
-- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate, se il **token ntfy** è attivo, quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "429 troppe richieste"). Qui scegli anche **per quali time frame ricevere la notifica** (i segnali degli altri restano nell'elenco ma non ti avvisano) e se vuoi il **riepilogo serale**; premi **Salva scelte**.
+- **Notifiche sul telefono** (stesso riquadro, in fondo): dice se le notifiche del server sono collegate, se il **token ntfy** è attivo, quando è partito l'ultimo messaggio e se il promemoria delle 7 di oggi è stato inviato. Il pulsante **Manda una notifica di prova** controlla subito se il telefono riceve. Se un invio fallisce, vedi il motivo (per esempio "429 troppe richieste"). Qui scegli anche **per quali time frame ricevere la notifica** (i segnali degli altri restano nell'elenco ma non ti avvisano), la **soglia di probabilità di target** (di partenza 30%: ti avvisa solo se la simulazione dà il target prima dello stop in più del 30% dei casi; 0 = tutti) e se vuoi il **riepilogo serale**; premi **Salva scelte**.
 
 ### Notizie importanti in arrivo
 - Solo gli eventi "rossi" (impatto alto) di USD, EUR, GBP: tassi, inflazione, lavoro USA, discorsi delle banche centrali. Orari in ora italiana. **Toccando un evento** vedi gli scenari: cosa tende a fare l'oro se il dato è sopra, in linea o sotto le attese. Sono regole generali, non percentuali né previsioni.

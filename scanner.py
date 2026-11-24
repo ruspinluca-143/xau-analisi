@@ -110,7 +110,7 @@ def flush():
     now = time.time()
     sent = 0
     with LOCK:
-        pend = sorted((x for x in STATE["hist"].values() if x.get("status") == "open" and not x.get("notified") and now - x.get("entry_ts", 0) < 6 * 3600 and x.get("rr") in E.DEFAULT_RRS and x.get("tf") in N.prefs()["tfs"]),
+        pend = sorted((x for x in STATE["hist"].values() if x.get("status") == "open" and not x.get("notified") and now - x.get("entry_ts", 0) < 6 * 3600 and x.get("rr") in E.DEFAULT_RRS and x.get("tf") in N.prefs()["tfs"] and (x.get("sim_target") or 0) * 100 > N.prefs()["min_target"]),
                       key=lambda x: (x.get("tier") != "netto", -x.get("entry_ts", 0)))
     if pend:
         def one(x):
